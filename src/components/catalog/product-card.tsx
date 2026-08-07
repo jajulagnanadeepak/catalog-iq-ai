@@ -6,7 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { Product } from "@/lib/api/types";
 
-export function ProductCard({ product, score }: { product: Product; score?: number }) {
+export function ProductCard({
+  product,
+  score,
+}: {
+  product: Product;
+  score?: number | undefined;
+}) {
   return (
     <Card className="group flex h-full flex-col overflow-hidden p-0 shadow-card transition-all duration-300 hover:-translate-y-1 hover:shadow-elevated">
       <Link
