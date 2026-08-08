@@ -19,7 +19,7 @@ export default defineConfig({
         // The frontend's requestWithFallback will automatically use real data
         // once the backend is running via: cd backend && uvicorn main:app --reload
         "/api": {
-          target: "http://localhost:8000",
+          target: "http://127.0.0.1:8000",
           changeOrigin: true,
           secure: false,
         },

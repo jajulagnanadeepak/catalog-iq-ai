@@ -54,32 +54,41 @@ export function getProduct(id: string) {
 }
 
 /** POST /search — semantic search */
-export function postSearch(payload: SearchPayload) {
-  return requestWithFallback<SearchResult>(
-    () => apiClient.post("/search", payload),
-    () => {
-      const q = payload.query.toLowerCase().trim();
-      const scored = filterSort(payload)
-        .map((p) => {
-          const haystack = `${p.name} ${p.brand} ${p.category} ${p.tags.join(" ")} ${p.description}`;
-          const hits = q ? q.split(/\s+/).filter((t) => haystack.toLowerCase().includes(t)).length : 1;
-          return { p, score: hits ? 0.6 + hits * 0.1 : 0.35 + p.rating / 20 };
-        })
-        .sort((a, b) => b.score - a.score);
-      const page = paginate(
-        scored.map((s) => s.p),
-        payload.page ?? 1,
-        payload.pageSize ?? 8,
-      );
-      return {
-        ...page,
-        interpretation: q
-          ? `Interpreted as: intent to browse "${q}" ranked by semantic similarity across catalog embeddings.`
-          : "Showing the highest-affinity catalog items for your profile.",
-        matches: scored.map((s) => ({ productId: s.p.id, score: Math.min(0.99, s.score) })),
-      };
-    },
-  );
+/* POST /semantic-search */
+
+export async function postSearch(payload: SearchPayload) {
+  const response = await apiClient.post("/semantic-search", payload);
+
+  const data = response.data;
+
+  const items = data.products.map((p: any) => ({
+    id: p.product_id ?? p._id,
+    name: p.name,
+    brand: p.brand ?? p.department ?? "H&M",
+    category: p.category,
+    description: p.description,
+    image:
+      p.image ??
+      "https://via.placeholder.com/300x400?text=Product",
+    price: p.price ?? 0,
+    originalPrice: p.original_price ?? null,
+    rating: p.rating ?? 4.5,
+    reviews: p.reviews ?? 0,
+    inStock: true,
+    tags: p.tags ?? [],
+  }));
+
+  return {
+    items,
+    page: 1,
+    pageSize: items.length,
+    total: items.length,
+    interpretation: "Semantic Search Results",
+    matches: items.map((item: any) => ({
+      productId: item.id,
+      score: 1,
+    })),
+  };
 }
 
 /** GET /recommend */
