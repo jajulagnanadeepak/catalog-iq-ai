@@ -46,7 +46,7 @@ async def get_product(
     product_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    service = ProductService(db)
+    service = ProductService()
     product = await service.get_product(product_id)
     if product is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")

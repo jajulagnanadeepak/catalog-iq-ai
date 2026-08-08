@@ -173,20 +173,44 @@ export function postBudget(payload: BudgetPayload) {
 }
 
 /** POST /copilot */
-export function postCopilot(payload: CopilotPayload) {
-  return requestWithFallback<CopilotReply>(
-    () => apiClient.post("/copilot", payload),
-    () => {
-      const last = payload.messages[payload.messages.length - 1]?.content ?? "";
-      return {
-        message: {
-          role: "assistant",
-          content: `Here's what I'd suggest for "${last}". I looked across the catalog for fit, price band, and review sentiment, then narrowed to three items that work together. Want me to swap any of them for a cheaper alternative?`,
-        },
-        suggestions: pick(["p-001", "p-003", "p-008"]),
-      };
+export async function postCopilot(payload: CopilotPayload) {
+  // Get the latest user message from the chat
+  const latestMessage =
+    payload.messages[payload.messages.length - 1]?.content ?? "";
+
+  // Call your FastAPI backend
+  console.log("Calling backend:", "/copilot/chat");
+  const response = await apiClient.post("/copilot/chat", {
+    message: latestMessage,
+  });
+
+  const data = response.data;
+
+  return {
+    message: {
+      role: "assistant",
+      content: data.response,
     },
-  );
+
+    suggestions: data.recommendations.map((p: any) => ({
+      id: p.product_id ?? p._id,
+      name: p.name,
+      brand: p.department ?? "H&M",
+      category: p.category,
+      description: p.description,
+      image:
+        p.image ??
+        "https://via.placeholder.com/300x400?text=Product",
+      price: p.price ?? 0,
+      originalPrice: null,
+      rating: p.rating ?? 4.5,
+      reviews: p.reviews ?? 0,
+      inStock: true,
+      tags: [],
+      recommendationScore: p.recommendation_score,
+      reason: p.reason,
+    })),
+  };
 }
 
 /** POST /visual-search */

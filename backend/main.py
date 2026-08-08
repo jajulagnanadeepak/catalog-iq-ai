@@ -17,7 +17,7 @@ from config import settings
 from database.connection import connect_db, close_db
 
 from api.v1 import products, search, intent, recommend, auth
-from routes import semantic_search
+from routes import semantic_search, copilot
 
 
 @asynccontextmanager
@@ -60,6 +60,8 @@ def create_app() -> FastAPI:
 
     # Semantic Search Router
     app.include_router(semantic_search.router, prefix=PREFIX)
+    # AI Copilot Router
+    app.include_router(copilot.router, prefix=PREFIX)
 
     # ---------------- HEALTH ----------------
 

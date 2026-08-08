@@ -4,14 +4,20 @@ No AI logic — pure database operations.
 """
 
 from typing import Optional
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from database.connection import get_database
 from models.product import Product
 from utils.pagination import paginate
 
 
 class ProductService:
-    def __init__(self, db: AsyncIOMotorDatabase):
-        self.collection = db["products"]
+
+    @property
+    def collection(self):
+        """
+        Always get the latest MongoDB collection.
+        Prevents using a closed MongoClient after reload.
+        """
+        return get_database()["products"]
 
     async def list_products(
         self,
@@ -66,11 +72,15 @@ class ProductService:
             "total": total,
         }
 
-    async def get_product(self, product_id: str) -> Optional[Product]:
-        """Fetch a single product by its _id string."""
-        doc = await self.collection.find_one({"_id": product_id})
+    async def get_product(self, product_id: str):
+
+        doc = await self.collection.find_one({
+            "product_id": product_id
+        })
+
         if doc is None:
             return None
+
         return self._to_product(doc)
 
     @staticmethod
