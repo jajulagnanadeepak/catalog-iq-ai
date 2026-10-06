@@ -2,123 +2,106 @@ import pickle
 
 import faiss
 import numpy as np
-import asyncio
-
-from bson import ObjectId
-
-from database.connection import connect_db, close_db, get_database
 from sentence_transformers import SentenceTransformer
 
-print("Loading AI Model...")
+from database.connection import connect_db, close_db, get_database
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
 
-print("✅ AI Model Loaded")
-print("\nLoading FAISS Index...")
+MODEL_NAME = "all-MiniLM-L6-v2"
 
-index = faiss.read_index("products.index")
+INDEX_PATH = "hm_products.index"
+IDS_PATH = "hm_product_ids.pkl"
 
-print("✅ FAISS Index Loaded")
-print("\nLoading Product IDs...")
 
-with open("product_ids.pkl", "rb") as f:
+print("Loading semantic search model...")
+
+model = SentenceTransformer(MODEL_NAME)
+
+print("Loading H&M FAISS index...")
+
+index = faiss.read_index(INDEX_PATH)
+
+with open(IDS_PATH, "rb") as f:
     product_ids = pickle.load(f)
 
-print(f"✅ Loaded {len(product_ids)} Product IDs")
+print(f"✅ FAISS vectors loaded: {index.ntotal:,}")
+print(f"✅ Product IDs loaded: {len(product_ids):,}")
 
-async def semantic_search(query, top_k=20):
 
-    print("\nSearching for:", query)
+async def semantic_search(query: str, top_k: int = 20):
+    if not query or not query.strip():
+        return []
 
-    # Step 1: Convert query into embedding
+    top_k = max(1, min(top_k, index.ntotal))
+
     query_embedding = model.encode(
         [query],
-        convert_to_numpy=True
-    )
-
-    query_embedding = query_embedding.astype(np.float32)
-
-    print("Embedding Shape:", query_embedding.shape)
-
-    # Step 2: Search FAISS
-    print("\nSearching FAISS...")
+        convert_to_numpy=True,
+    ).astype(np.float32)
 
     distances, indices = index.search(
         query_embedding,
-        top_k
+        top_k,
     )
 
-    print("\nDistances:")
-    print(distances)
-
-    print("\nIndices:")
-    print(indices)
-
-    # Step 3: Convert vector positions to MongoDB IDs
-    print("\nConverting Vector Positions to MongoDB IDs...")
-
-    mongo_ids = []
+    article_ids = []
 
     for idx in indices[0]:
-        mongo_ids.append(product_ids[idx])
+        if idx < 0 or idx >= len(product_ids):
+            continue
 
-    print("\nMongoDB Product IDs:")
+        article_ids.append(product_ids[idx])
 
-    for pid in mongo_ids:
-        print(pid)
-
-    # Step 4: Connect to MongoDB
-    print("\nConnecting to MongoDB...")
+    if not article_ids:
+        return []
 
     await connect_db()
 
-    db = get_database()
+    try:
+        db = get_database()
+        collection = db["catalog_products"]
 
-    products_collection = db["Products"]
+        products = await collection.find(
+            {
+                "_id": {
+                    "$in": article_ids
+                }
+            }
+        ).to_list(length=top_k)
 
-    # Step 5: Fetch complete product details
-    products = []
+        product_map = {
+            product["_id"]: product
+            for product in products
+        }
 
-    print("\nFetching Product Details...\n")
+        results = []
 
-    for pid in mongo_ids:
+        for rank, (idx, distance) in enumerate(
+            zip(indices[0], distances[0]),
+            start=1,
+        ):
+            if idx < 0 or idx >= len(product_ids):
+                continue
 
-        product = await products_collection.find_one(
-            {"_id": ObjectId(pid)}
-        )
+            article_id = product_ids[idx]
 
-        if product:
+            product = product_map.get(article_id)
 
-            # Convert ObjectId into string
+            if product is None:
+                continue
+
             product["_id"] = str(product["_id"])
 
-            products.append(product)
+            results.append(
+                {
+                    "rank": rank,
+                    "article_id": article_id,
+                    "distance": float(distance),
+                    "product": product,
+                }
+            )
 
-    await close_db()
+        return results
 
-    # Step 6: Display products
-    print("=" * 60)
-    print("Top Matching Products")
-    print("=" * 60)
-
-    for i, product in enumerate(products, start=1):
-
-        print(f"\nProduct {i}")
-
-        print("ID          :", product.get("_id"))
-        print("Name        :", product.get("name"))
-        print("Category    :", product.get("category"))
-        print("Type        :", product.get("product_type"))
-        print("Department  :", product.get("department"))
-        print("Colour      :", product.get("colour"))
-        print("Description :", product.get("description"))
-
-        print("-" * 60)
-
-    return products
-
-if __name__ == "__main__":
-
-    asyncio.run(
-        semantic_search("Need black running shoes")
-    )
+    finally:
+        await close_db()

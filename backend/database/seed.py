@@ -195,20 +195,31 @@ PRODUCTS = [
 
 async def seed() -> None:
     await connect_db()
+
     db = get_database()
+
+    # IMPORTANT: same collection name used by ProductService
     col = db["products"]
 
     existing = await col.count_documents({})
+
     if existing > 0:
-        print(f"ℹ️  Products collection already has {existing} documents — skipping seed.")
+        print(
+            f"ℹ️ Products collection already has "
+            f"{existing} documents — skipping seed."
+        )
         await close_db()
         return
 
     await col.insert_many(PRODUCTS)
-    print(f"🌱 Seeded {len(PRODUCTS)} products into '{settings.database_name}.products'.")
+
+    print(
+        f"🌱 Seeded {len(PRODUCTS)} products into "
+        f"'{db.name}.products'."
+    )
+
     await close_db()
 
 
 if __name__ == "__main__":
-    from config import settings  # noqa: F401 — needed for env loading
     asyncio.run(seed())

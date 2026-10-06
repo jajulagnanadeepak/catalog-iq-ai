@@ -1,21 +1,67 @@
-from fastapi import APIRouter
-from models.schemas import IntentPayload
+from fastapi import APIRouter, HTTPException
+
+from models.schemas import (
+    IntentPayload,
+    IntentEventPayload,
+)
+
 from services.intent_service import IntentService
 
-router = APIRouter(prefix="/intent", tags=["Intent"])
+from services.session_intent_service import (
+    session_intent_service,
+)
 
-_service = IntentService()  # No DB dependency — pure rule-based logic
+
+router = APIRouter(
+    prefix="/intent",
+    tags=["Intent"],
+)
+
+_service = IntentService()
 
 
 @router.post(
     "",
     summary="Classify user query intent",
-    description=(
-        "Extracts intent label, confidence score, and named entities (category, budget) "
-        "from a natural-language query string. "
-        "Phase 3 will replace rule-based logic with an LLM call."
-    ),
 )
-async def classify_intent(payload: IntentPayload):
+async def classify_intent(
+    payload: IntentPayload,
+):
     result = _service.classify(payload)
+
     return result.model_dump()
+
+
+@router.post(
+    "/event",
+    summary="Record user behavior event",
+)
+async def record_intent_event(
+    payload: IntentEventPayload,
+):
+
+    try:
+
+        result = await session_intent_service.record_event(
+            session_id=payload.session_id,
+            event_type=payload.event_type,
+            category=payload.category,
+            product_id=payload.product_id,
+        )
+
+        return {
+            "success": True,
+            "event": {
+                "type": payload.event_type,
+                "category": payload.category,
+                "product_id": payload.product_id,
+            },
+            "intent": result,
+        }
+
+    except ValueError as exc:
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )

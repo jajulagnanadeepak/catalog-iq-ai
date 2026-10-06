@@ -70,3 +70,9 @@ class IntentResult(BaseModel):
     intent: str
     confidence: float
     entities: list[IntentEntity]
+
+class IntentEventPayload(BaseModel):
+    session_id: str
+    event_type: str
+    category: Optional[str] = None
+    product_id: Optional[str] = None
