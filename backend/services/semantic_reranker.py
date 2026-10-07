@@ -1,3 +1,4 @@
+from transformers.models.audio_spectrogram_transformer import feature_extraction_audio_spectrogram_transformer
 import re
 from collections import defaultdict
 
@@ -100,21 +101,26 @@ class SemanticReranker:
                 product,
                 session_intent,
             )
+            occasion_score = self._occasion_score(
+    query,
+    product,
+)
 
             # -------------------------------------------------
             # FINAL SCORE
             # -------------------------------------------------
 
             final_score = (
-                self.weights["semantic"]
-                * semantic_score
-                + self.weights["keyword"]
-                * keyword_score
-                + self.weights["attributes"]
-                * attribute_score
-                + self.weights["intent"]
-                * intent_score
-            )
+    self.weights["semantic"]
+    * semantic_score
+    + self.weights["keyword"]
+    * keyword_score
+    + self.weights["attributes"]
+    * attribute_score
+    + self.weights["intent"]
+    * intent_score
+    + 0.10 * occasion_score
+)
 
             scored.append(
                 {
@@ -309,7 +315,8 @@ class SemanticReranker:
     def _semantic_score(distance):
 
         return 1.0 / (
-            1.0 + max(
+            1.0
+            + max(
                 distance,
                 0.0,
             )
@@ -792,6 +799,140 @@ class SemanticReranker:
             product=product,
             category=primary_category,
         )
+        # =========================================================
+    # OCCASION SCORE
+    # =========================================================
+
+        # =========================================================
+    # OCCASION SCORE
+    # =========================================================
+
+    def _occasion_score(
+        self,
+        query,
+        product,
+    ):
+
+        query_text = str(query).lower()
+
+        product_type = str(
+            product.get(
+                "product_type",
+                "",
+            )
+        ).lower().strip()
+
+        product_text = " ".join(
+            [
+                str(product.get("name", "")),
+                str(product.get("product_type", "")),
+                str(product.get("category", "")),
+                str(product.get("department", "")),
+                str(product.get("section", "")),
+                str(product.get("garment_group", "")),
+                str(product.get("description", "")),
+            ]
+        ).lower()
+
+        # -----------------------------------------------------
+        # OFFICE / WORK
+        # -----------------------------------------------------
+
+        office_keywords = {
+            "office",
+            "work",
+            "formal",
+            "business",
+            "professional",
+        }
+
+        if any(
+            word in query_text
+            for word in office_keywords
+        ):
+
+            # Strong office products
+            strong_office_types = {
+                "shirt",
+                "shirts",
+                "blazer",
+                "blazers",
+                "loafer",
+                "loafers",
+                "coat",
+                "overcoat",
+                "trenchcoat",
+                "trench coat",
+            }
+
+            if product_type in strong_office_types:
+                return 0.90
+
+            # Formal/tailored language is a strong signal
+            if any(
+                word in product_text
+                for word in [
+                    "formal",
+                    "office",
+                    "business",
+                    "tailored",
+                    "smart",
+                    "suit",
+                    "wool",
+                ]
+            ):
+                return 1.0
+
+            # Regular trousers are suitable,
+            # but not automatically the best choice.
+            if product_type in {
+                "trouser",
+                "trousers",
+                "pants",
+                "chinos",
+            }:
+                return 0.70
+
+            # Track pants / joggers are weak office matches.
+            if product_type in {
+                "jogger",
+                "joggers",
+                "track pants",
+                "leggings",
+                "leggings/tights",
+                "shorts",
+            }:
+                return 0.10
+
+            # Blouses can work for office wear,
+            # but don't automatically outrank formal products.
+            if product_type in {
+                "blouse",
+                "blouses",
+            }:
+                return 0.60
+
+            # -------------------------------------------------
+            # OBVIOUS NON-OFFICE PRODUCTS
+            # -------------------------------------------------
+
+            if any(
+                word in product_text
+                for word in [
+                    "nightwear",
+                    "night wear",
+                    "pyjama",
+                    "pajama",
+                    "sleepwear",
+                    "swimwear",
+                    "beachwear",
+                ]
+            ):
+                return 0.0
+
+            return 0.20
+
+        return 0.0   
 
     # =========================================================
     # DIVERSITY
@@ -890,9 +1031,7 @@ class SemanticReranker:
         # CATEGORY
         # -----------------------------------------------------
 
-        category = attributes.get(
-            "category"
-        )
+        category = attributes.get("category")
 
         if category:
 
@@ -903,7 +1042,6 @@ class SemanticReranker:
             )
 
             if product_category == category:
-
                 reasons.append(
                     f"matches your {category} request"
                 )
@@ -912,9 +1050,7 @@ class SemanticReranker:
         # COLOR
         # -----------------------------------------------------
 
-        color = attributes.get(
-            "color"
-        )
+        color = attributes.get("color")
 
         if color:
 
@@ -926,7 +1062,6 @@ class SemanticReranker:
             ).lower()
 
             if color in product_color:
-
                 reasons.append(
                     f"matches the {color} color"
                 )
@@ -935,9 +1070,7 @@ class SemanticReranker:
         # GENDER
         # -----------------------------------------------------
 
-        gender = attributes.get(
-            "gender"
-        )
+        gender = attributes.get("gender")
 
         if gender:
 
@@ -948,9 +1081,70 @@ class SemanticReranker:
             )
 
             if product_gender == gender:
-
                 reasons.append(
                     f"matches your {gender} preference"
+                )
+
+        # -----------------------------------------------------
+        # SESSION INTENT
+        # -----------------------------------------------------
+
+                # -----------------------------------------------------
+        # SESSION INTENT
+        # -----------------------------------------------------
+
+        if session_intent:
+
+            session_category = (
+                session_intent.get(
+                    "primary_category"
+                )
+            )
+
+            if session_category:
+
+                product_category = (
+                    self._infer_product_category(
+                        product
+                    )
+                )
+
+                intent_score = (
+                    self._product_intent_score(
+                        product,
+                        session_intent,
+                    )
+                )
+
+                if (
+                    product_category == session_category
+                    and intent_score > 0
+                ):
+                    reasons.append(
+                        f"matches your recent interest in "
+                        f"{session_category}"
+                    )
+
+        # -----------------------------------------------------
+        # OCCASION EXPLANATION
+        # -----------------------------------------------------
+
+        if self._occasion_score(query, product) >= 0.8:
+
+            query_text = str(query).lower()
+
+            if any(
+                word in query_text
+                for word in [
+                    "office",
+                    "work",
+                    "formal",
+                    "business",
+                    "professional",
+                ]
+            ):
+                reasons.append(
+                    "is suitable for office wear"
                 )
 
         # -----------------------------------------------------
@@ -964,26 +1158,6 @@ class SemanticReranker:
                 + " and ".join(reasons)
                 + "."
             )
-
-        # -----------------------------------------------------
-        # SESSION INTENT FALLBACK
-        # -----------------------------------------------------
-
-        if session_intent:
-
-            session_category = (
-                session_intent.get(
-                    "primary_category"
-                )
-            )
-
-            if session_category:
-
-                return (
-                    f"{name} is relevant to your search "
-                    f"and recent interest in "
-                    f"{session_category}."
-                )
 
         # -----------------------------------------------------
         # DEFAULT

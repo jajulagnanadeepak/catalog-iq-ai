@@ -2,68 +2,145 @@ import re
 
 
 class IntentDetector:
-    """
-    Detects what the user is trying to do from a search query.
-    """
 
     def detect_intent(self, query: str) -> dict:
+
         query = query.lower().strip()
 
-        budget_pattern = r"(under|below|less than|₹|rs|rupees)\s*\d+"
+        # -----------------------------------------------------
+        # BUDGET
+        # -----------------------------------------------------
 
-        if re.search(budget_pattern, query):
+        budget_pattern = (
+            r"(?:"
+            r"under|below|less than"
+            r")\s*"
+            r"(?:₹|\$|€|£|rs\.?|usd|eur|gbp|rupees?)?\s*"
+            r"\d[\d,]*(?:\.\d+)?"
+        )
+
+        currency_pattern = (
+            r"(?:₹|\$|€|£|rs\.?|usd|eur|gbp|rupees?)\s*"
+            r"\d[\d,]*(?:\.\d+)?"
+        )
+
+        if (
+            re.search(budget_pattern, query)
+            or re.search(currency_pattern, query)
+        ):
             return {
                 "intent": "budget_search",
-                "confidence": 0.95
+                "confidence": 0.95,
+                "tool": "budget"
             }
 
-        if any(word in query for word in [
-            "recommend",
-            "suggest",
-            "best",
-            "popular"
-        ]):
+        # -----------------------------------------------------
+        # VISUAL SEARCH
+        # -----------------------------------------------------
+
+        if any(
+            word in query
+            for word in [
+                "similar to this",
+                "similar product",
+                "similar item",
+                "like this",
+                "look like this"
+            ]
+        ):
+            return {
+                "intent": "visual_search",
+                "confidence": 0.94,
+                "tool": "visual_search"
+            }
+
+        # -----------------------------------------------------
+        # RECOMMENDATION
+        # -----------------------------------------------------
+
+        if any(
+            word in query
+            for word in [
+                "recommend",
+                "suggest",
+                "best",
+                "popular"
+            ]
+        ):
             return {
                 "intent": "recommendation",
-                "confidence": 0.92
+                "confidence": 0.92,
+                "tool": "recommendation"
             }
 
-        if any(word in query for word in [
-            "office",
-            "formal",
-            "casual",
-            "party",
-            "wedding",
-            "gym"
-        ]):
+        # -----------------------------------------------------
+        # OCCASION
+        # -----------------------------------------------------
+
+        if any(
+            word in query
+            for word in [
+                "office",
+                "formal",
+                "business",
+                "professional",
+                "casual",
+                "party",
+                "wedding",
+                "gym"
+            ]
+        ):
             return {
                 "intent": "occasion_search",
-                "confidence": 0.90
+                "confidence": 0.90,
+                "tool": "semantic_search"
             }
 
-        if any(word in query for word in [
-            "summer",
-            "winter",
-            "rain",
-            "monsoon"
-        ]):
+        # -----------------------------------------------------
+        # SEASONAL
+        # -----------------------------------------------------
+
+        if any(
+            word in query
+            for word in [
+                "summer",
+                "winter",
+                "rain",
+                "monsoon"
+            ]
+        ):
             return {
                 "intent": "seasonal_search",
-                "confidence": 0.90
+                "confidence": 0.90,
+                "tool": "seasonal"
             }
 
-        if any(word in query for word in [
-            "wear",
-            "outfit",
-            "style",
-            "match"
-        ]):
+        # -----------------------------------------------------
+        # STYLING
+        # -----------------------------------------------------
+
+        if any(
+            word in query
+            for word in [
+                "wear",
+                "outfit",
+                "style",
+                "match",
+                "pair"
+            ]
+        ):
             return {
                 "intent": "styling",
-                "confidence": 0.93
+                "confidence": 0.93,
+                "tool": "stylist"
             }
+
+        # -----------------------------------------------------
+        # DEFAULT
+        # -----------------------------------------------------
 
         return {
             "intent": "semantic_search",
-            "confidence": 0.80
+            "confidence": 0.80,
+            "tool": "semantic_search"
         }

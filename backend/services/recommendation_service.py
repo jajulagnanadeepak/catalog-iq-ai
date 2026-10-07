@@ -1,19 +1,5 @@
 """
-RecommendationService — deterministic product recommendations.
-
-Current MVP:
-- MongoDB catalog
-- Query/category/tag relevance
-- Rating/popularity
-- Optional budget filtering
-- Deterministic explanations
-
-Future:
-- Session intent
-- User event history
-- FAISS semantic similarity
-- Seasonal signals
-- Diversity guardrails
+RecommendationService — deterministic personalized recommendations.
 """
 
 import re
@@ -35,37 +21,31 @@ class RecommendationService:
         query: Optional[str] = None,
         max_price: Optional[float] = None,
         category: Optional[str] = None,
+        session_intent: Optional[dict] = None,
     ) -> list[dict]:
 
-        # ---------------------------------------------------------
-        # 1. Build MongoDB filter
-        # ---------------------------------------------------------
-
-        mongo_query = {
-            "in_stock": True
-        }
+        mongo_query = {"in_stock": True}
 
         if max_price is not None:
-            mongo_query["price"] = {
-                "$lte": max_price
-            }
+            mongo_query["price"] = {"$lte": max_price}
 
         if category and category.lower() != "all":
             mongo_query["category"] = category
 
-        docs = await (
-            self.collection
-            .find(mongo_query)
-            .to_list(length=100)
-        )
-
-        # ---------------------------------------------------------
-        # 2. Score candidates
-        # ---------------------------------------------------------
-
-        scored_products = []
+        docs = await self.collection.find(mongo_query).to_list(length=100)
 
         query_tokens = self._tokenize(query or "")
+
+        primary_intent = None
+        intent_confidence = 0.0
+
+        if session_intent:
+            primary_intent = session_intent.get("primary_category")
+            intent_confidence = float(
+                session_intent.get("confidence", 0.0)
+            )
+
+        scored_products = []
 
         for doc in docs:
             product = self._to_product(doc)
@@ -74,119 +54,106 @@ class RecommendationService:
                 product=product,
                 query_tokens=query_tokens,
                 max_price=max_price,
+                primary_intent=primary_intent,
+                intent_confidence=intent_confidence,
             )
 
-            scored_products.append(
-                (score, product)
-            )
-
-        # ---------------------------------------------------------
-        # 3. Highest score first
-        # ---------------------------------------------------------
+            scored_products.append((score, product))
 
         scored_products.sort(
             key=lambda item: item[0],
             reverse=True,
         )
 
-        # ---------------------------------------------------------
-        # 4. Build recommendation response
-        # ---------------------------------------------------------
-
         recommendations = []
 
         for index, (score, product) in enumerate(
             scored_products[:limit]
         ):
-
-            recommendations.append({
-                "id": f"r-{index}",
-                "title": "Recommended for you",
-                "reason": self._build_reason(
-                    product=product,
-                    query=query,
-                    max_price=max_price,
-                ),
-                "confidence": round(
-                    min(0.95, max(0.50, score)),
-                    2,
-                ),
-                "product": product.model_dump(
-                    by_alias=False
-                ),
-            })
+            recommendations.append(
+                {
+                    "id": f"r-{index}",
+                    "title": "Recommended for you",
+                    "reason": self._build_reason(
+                        product=product,
+                        query=query,
+                        max_price=max_price,
+                        primary_intent=primary_intent,
+                        intent_confidence=intent_confidence,
+                    ),
+                    "confidence": round(
+                        min(0.95, max(0.50, score)),
+                        2,
+                    ),
+                    "product": product.model_dump(
+                        by_alias=False
+                    ),
+                }
+            )
 
         return recommendations
-
-    # =============================================================
-    # SCORING
-    # =============================================================
 
     def _score_product(
         self,
         product: Product,
         query_tokens: set[str],
         max_price: Optional[float],
+        primary_intent: Optional[str],
+        intent_confidence: float,
     ) -> float:
 
         score = 0.0
 
-        # ---------------------------------------------------------
-        # Query relevance — 50%
-        # ---------------------------------------------------------
+        searchable_text = " ".join(
+            [
+                product.name or "",
+                product.brand or "",
+                product.category or "",
+                " ".join(product.tags or []),
+                product.description or "",
+                " ".join(product.colors or []),
+            ]
+        ).lower()
 
-        searchable_text = " ".join([
-            product.name or "",
-            product.brand or "",
-            product.category or "",
-            " ".join(product.tags or []),
-            product.description or "",
-            " ".join(product.colors or []),
-        ]).lower()
+        # Query relevance — 40%
+        query_score = 0.0
 
         if query_tokens:
-
             matched_tokens = sum(
                 1
                 for token in query_tokens
                 if token in searchable_text
             )
-
             query_score = matched_tokens / len(query_tokens)
 
-            score += 0.50 * query_score
+        score += 0.40 * query_score
 
-        # ---------------------------------------------------------
-        # Rating — 20%
-        # ---------------------------------------------------------
+        # Session intent — 25%
+        intent_score = 0.0
 
+        if primary_intent:
+            if self._category_matches_intent(
+                product.category,
+                primary_intent,
+            ):
+                intent_score = intent_confidence
+
+        score += 0.25 * intent_score
+
+        # Rating — 15%
         rating_score = (product.rating or 0) / 5.0
+        score += 0.15 * rating_score
 
-        score += 0.20 * rating_score
-
-        # ---------------------------------------------------------
-        # Popularity — 15%
-        # ---------------------------------------------------------
-
+        # Popularity — 10%
         reviews = product.reviews or 0
+        popularity_score = min(reviews / 500.0, 1.0)
 
-        popularity_score = min(
-            reviews / 500.0,
-            1.0,
-        )
+        score += 0.10 * popularity_score
 
-        score += 0.15 * popularity_score
-
-        # ---------------------------------------------------------
-        # Budget — 15%
-        # ---------------------------------------------------------
-
+        # Budget — 10%
         if max_price is not None:
 
             if product.price <= max_price:
-
-                # Cheaper products receive a small advantage,
-                # while still allowing quality/relevance to dominate.
                 budget_score = 1.0 - (
                     product.price / max_price
                 )
@@ -196,24 +163,99 @@ class RecommendationService:
                     min(1.0, budget_score),
                 )
 
-                score += 0.15 * budget_score
+                score += 0.10 * budget_score
 
         else:
-            # No budget supplied.
-            score += 0.15
+            score += 0.10
 
         return score
 
-    # =============================================================
-    # EXPLANATION
-    # =============================================================
+    @staticmethod
+    def _category_matches_intent(
+        product_category,
+        intent_category,
+    ):
+
+        if not product_category or not intent_category:
+            return False
+
+        product = product_category.lower().strip()
+        intent = intent_category.lower().strip()
+
+        aliases = {
+            "tops": {
+                "top",
+                "tops",
+                "shirt",
+                "shirts",
+                "t-shirt",
+                "tshirts",
+                "blouse",
+                "vest",
+            },
+            "outerwear": {
+                "outerwear",
+                "jacket",
+                "jackets",
+                "coat",
+                "coats",
+                "blazer",
+            },
+            "trousers": {
+                "trouser",
+                "trousers",
+                "pants",
+                "pant",
+                "jeans",
+                "shorts",
+            },
+            "footwear": {
+                "footwear",
+                "shoes",
+                "shoe",
+                "sneakers",
+                "boots",
+                "sandals",
+            },
+            "bags": {
+                "bag",
+                "bags",
+                "backpack",
+                "handbag",
+            },
+            "swimwear": {
+                "swimwear",
+                "swimsuit",
+                "bikini",
+            },
+            "knitwear": {
+                "knitwear",
+                "knit",
+                "sweater",
+                "sweaters",
+            },
+        }
+
+        if product == intent:
+            return True
+
+        for canonical, values in aliases.items():
+
+            if intent in values:
+
+                if product == canonical or product in values:
+                    return True
+
+        return False
 
     @staticmethod
     def _build_reason(
-        product: Product,
-        query: Optional[str],
-        max_price: Optional[float],
-    ) -> str:
+        product,
+        query,
+        max_price,
+        primary_intent,
+        intent_confidence,
+    ):
 
         reasons = []
 
@@ -222,16 +264,28 @@ class RecommendationService:
                 f"matches your search for '{query}'"
             )
 
+        if primary_intent and intent_confidence > 0:
+
+            if RecommendationService._category_matches_intent(
+                product.category,
+                primary_intent,
+            ):
+                reasons.append(
+                    f"matches your current interest in {primary_intent}"
+                )
+
         if product.category:
             reasons.append(
                 f"fits the {product.category} category"
             )
 
-        if max_price is not None:
-            if product.price <= max_price:
-                reasons.append(
-                    f"stays within your ${max_price:g} budget"
-                )
+        if (
+            max_price is not None
+            and product.price <= max_price
+        ):
+            reasons.append(
+                f"stays within your ${max_price:g} budget"
+            )
 
         if product.rating is not None:
             reasons.append(
@@ -241,16 +295,14 @@ class RecommendationService:
         if not reasons:
             return "Recommended based on catalog relevance."
 
-        return "Recommended because it " + ", ".join(
-            reasons[:3]
-        ) + "."
-
-    # =============================================================
-    # TEXT PROCESSING
-    # =============================================================
+        return (
+            "Recommended because it "
+            + ", ".join(reasons[:3])
+            + "."
+        )
 
     @staticmethod
-    def _tokenize(text: str) -> set[str]:
+    def _tokenize(text):
 
         if not text:
             return set()
@@ -283,12 +335,8 @@ class RecommendationService:
             if word not in stop_words
         }
 
-    # =============================================================
-    # MONGO → PRODUCT
-    # =============================================================
-
     @staticmethod
-    def _to_product(doc: dict) -> Product:
+    def _to_product(doc):
 
         doc = dict(doc)
 
