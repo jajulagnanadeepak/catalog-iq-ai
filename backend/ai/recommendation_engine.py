@@ -9,54 +9,55 @@ class RecommendationEngine:
     Removes duplicate products and enriches them for the frontend.
     """
 
-    async def recommend(self, query: str, limit: int = 10):
+    from search import semantic_search
 
+
+class RecommendationEngine:
+    """
+    Semantic product recommendations using available catalog data.
+    Avoids generating fake prices, ratings, reviews, or images.
+    """
+
+    async def recommend(self, query: str, limit: int = 10):
         products = await semantic_search(query)
 
         recommendations = []
         seen_names = set()
 
-        score = 100
-
         for product in products:
+            # Copy to avoid modifying the original search result.
+            product = dict(product)
 
-            name = product.get("name", "").strip()
+            name = str(product.get("name") or "").strip()
 
-            # Skip duplicate product names
-            if name in seen_names:
+            if not name:
                 continue
 
-            seen_names.add(name)
+            # Remove duplicate names, ignoring case.
+            name_key = name.casefold()
 
-            # ---------- Enrich Product ----------
+            if name_key in seen_names:
+                continue
 
-            product["brand"] = product.get("department", "H&M")
+            seen_names.add(name_key)
 
-            price = random.randint(999, 4999)
+            # Preserve actual catalog data.
+            # Do not invent missing prices, ratings, reviews, or images.
+            category = product.get("category")
 
-            product["price"] = price
-            product["original_price"] = price + random.randint(300, 1200)
-
-            product["rating"] = round(random.uniform(4.1, 5.0), 1)
-
-            product["reviews"] = random.randint(50, 5000)
-
-            product["image"] = (
-                f"https://placehold.co/300x400?text="
-                f"{name.replace(' ', '+')}"
-            )
-
-            # ---------- AI Fields ----------
-
-            product["recommendation_score"] = max(score, 70)
-
-            product["reason"] = self.get_reason(product)
+            if category:
+                product["reason"] = (
+                    f"Recommended because it matches your search "
+                    f"in the {category} category."
+                )
+            else:
+                product["reason"] = (
+                    "Recommended based on semantic similarity to your search."
+                )
 
             recommendations.append(product)
 
-            score -= 2
-
-            if len(recommendations) >= limit:
+            if len(recommendations) >= max(1, limit):
                 break
 
         return recommendations
