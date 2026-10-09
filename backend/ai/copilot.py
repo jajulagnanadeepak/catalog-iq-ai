@@ -55,6 +55,11 @@ class ShoppingCopilot:
         # 2. BUDGET SEARCH
         # -----------------------------------------------------
 
+       
+        # -----------------------------------------------------
+        # 2. BUDGET SEARCH
+        # -----------------------------------------------------
+
         if intent_name == "budget_search":
 
             result = await self.budget_service.search(
@@ -76,11 +81,25 @@ class ShoppingCopilot:
 
             products = result.get("items", [])
 
+            count = len(products)
+            currency = result["currency"]
+            budget = result["max_price"]
+
+            symbols = {
+                "USD": "$",
+                "INR": "₹",
+                "EUR": "€",
+                "GBP": "£",
+            }
+
+            symbol = symbols.get(currency, f"{currency} ")
+            formatted_budget = f"{symbol}{budget:,.2f}"
+
+            noun = "product" if count == 1 else "products"
+
             response = (
-                f"I found {len(products)} products "
-                f"within your budget of "
-                f"{result['max_price']:.0f} "
-                f"{result['currency']}."
+                f"I found {count} {noun} within your budget "
+                f"of {formatted_budget}."
             )
 
             return {
@@ -89,11 +108,12 @@ class ShoppingCopilot:
                 "session_intent": session_intent,
                 "tool": "budget",
                 "budget": {
-                    "currency": result["currency"],
-                    "max_price": result["max_price"]
+                    "currency": currency,
+                    "max_price": budget
                 },
                 "recommendations": products
             }
+
 
         # -----------------------------------------------------
         # 3. RECOMMENDATION REQUEST

@@ -2,6 +2,7 @@ import re
 from typing import Optional
 
 from services.product_service import ProductService
+from services.exchange_rate_service import ExchangeRateService
 
 
 class BudgetService:
@@ -11,7 +12,8 @@ class BudgetService:
     """
 
     def __init__(self):
-        self.product_service = ProductService()
+        self.product_service = ProductService()   
+        self.exchange_rate_service = ExchangeRateService()
 
     def parse_budget(self, query: str) -> Optional[dict]:
         """
@@ -239,75 +241,91 @@ class BudgetService:
 
         return ranked
 
+    
     async def search(
         self,
         query: str,
         page_size: int = 10,
     ) -> dict:
-        """
-        Search products using both budget and
-        product-query constraints.
-        """
+        """Search products using budget and currency constraints."""
 
         budget = self.parse_budget(query)
 
         if not budget:
             return {
                 "success": False,
-                "message": (
-                    "I couldn't determine the budget "
-                    "from your request."
-                ),
+                "message": "I couldn't determine the budget from your request.",
                 "items": [],
             }
 
-        if budget["currency"] != "USD":
+        requested_currency = budget["currency"]
+        requested_budget = budget["max_price"]
+
+        try:
+            # Fetch rates once for this search.
+            rate_data = await self.exchange_rate_service.get_rates()
+            rates = rate_data["rates"]
+
+            # Convert the customer's budget to USD for MongoDB filtering.
+            budget_usd = requested_budget / rates[requested_currency]
+
+            product_query = self.extract_product_query(query)
+            search_terms = self.normalize_search_terms(product_query)
+
+            result = await self.product_service.list_products(
+                page=1,
+                page_size=100,
+                max_price=budget_usd,
+                sort="price-asc",
+            )
+
+            items = [
+                product
+                for product in result["items"]
+                if self.product_matches_query(product, search_terms)
+            ]
+
+            # Rank using original USD prices and USD budget.
+            items = self.rank_products(
+                products=items,
+                search_terms=search_terms,
+                max_price=budget_usd,
+            )
+
+            items = items[:page_size]
+
+            # Convert returned product prices for display.
+            for product in items:
+                usd_price = float(product["price"])
+                product["catalog_currency"] = "USD"
+                product["price"] = round(
+                    usd_price * rates[requested_currency], 2
+                )
+
+                original_price = product.get("original_price")
+                if original_price is not None:
+                    product["original_price"] = round(
+                        float(original_price) * rates[requested_currency],
+                        2,
+                    )
+
+                product["currency"] = requested_currency
+
+            return {
+                "success": True,
+                "currency": requested_currency,
+                "max_price": requested_budget,
+                "catalog_currency": "USD",
+                "exchange_rate_date": rate_data["date"],
+                "query": product_query,
+                "total": len(items),
+                "items": items,
+            }
+
+        except RuntimeError as exc:
             return {
                 "success": False,
-                "message": (
-                    f"Your budget is in "
-                    f"{budget['currency']}, but the current "
-                    "product catalog is priced in USD."
-                ),
-                "currency": budget["currency"],
+                "message": str(exc),
+                "currency": requested_currency,
                 "items": [],
             }
-
-        product_query = self.extract_product_query(query)
-
-        search_terms = self.normalize_search_terms(
-            product_query
-        )
-
-        result = await self.product_service.list_products(
-            page=1,
-            page_size=100,
-            max_price=budget["max_price"],
-            sort="price-asc",
-        )
-
-        items = [
-            product
-            for product in result["items"]
-            if self.product_matches_query(
-                product,
-                search_terms,
-            )
-        ]
-
-        items = self.rank_products(
-            products=items,
-            search_terms=search_terms,
-            max_price=budget["max_price"],
-        )
-
-        items = items[:page_size]
-
-        return {
-            "success": True,
-            "currency": budget["currency"],
-            "max_price": budget["max_price"],
-            "query": product_query,
-            "total": len(items),
-            "items": items,
-        }
