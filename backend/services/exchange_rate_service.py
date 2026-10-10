@@ -5,14 +5,13 @@ import httpx
 
 
 class ExchangeRateService:
-    """Fetch and convert exchange rates using USD as the base."""
+    """Fetch and convert rates using USD as the base currency."""
 
     API_URL = "https://api.frankfurter.dev/v1/latest"
     SUPPORTED_CURRENCIES = {"USD", "INR", "EUR", "GBP"}
 
     async def get_rates(self) -> dict:
         """Fetch the latest available exchange rates."""
-
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.get(
@@ -26,8 +25,8 @@ class ExchangeRateService:
                 data = response.json()
 
             rates = data.get("rates", {})
-
             required = ("INR", "EUR", "GBP")
+
             for currency in required:
                 if currency not in rates or float(rates[currency]) <= 0:
                     raise ValueError(
@@ -57,6 +56,32 @@ class ExchangeRateService:
                 "Please try again later."
             ) from exc
 
+    def convert_with_rates(
+        self,
+        amount: float,
+        from_currency: str,
+        to_currency: str,
+        rates: dict,
+    ) -> float:
+        """Convert using an already-fetched USD-based rate table."""
+        if amount < 0:
+            raise ValueError("Amount cannot be negative.")
+
+        source = from_currency.upper()
+        target = to_currency.upper()
+
+        if (
+            source not in self.SUPPORTED_CURRENCIES
+            or target not in self.SUPPORTED_CURRENCIES
+        ):
+            raise ValueError("Unsupported currency.")
+
+        if source not in rates or target not in rates:
+            raise ValueError("Missing exchange rate.")
+
+        amount_in_usd = amount / rates[source]
+        return round(amount_in_usd * rates[target], 2)
+
     async def convert(
         self,
         amount: float,
@@ -64,7 +89,6 @@ class ExchangeRateService:
         to_currency: str,
     ) -> float:
         """Convert an amount between supported currencies."""
-
         if amount < 0:
             raise ValueError("Amount cannot be negative.")
 
@@ -81,10 +105,9 @@ class ExchangeRateService:
             return round(amount, 2)
 
         data = await self.get_rates()
-        rates = data["rates"]
-
-        # Each rate is the amount of currency per 1 USD.
-        amount_in_usd = amount / rates[source]
-        converted_amount = amount_in_usd * rates[target]
-
-        return round(converted_amount, 2)
+        return self.convert_with_rates(
+            amount,
+            source,
+            target,
+            data["rates"],
+        )
