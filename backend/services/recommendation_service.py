@@ -107,7 +107,7 @@ class RecommendationService:
                         display_currency=display_currency,
                     ),
                     # Ranking score, not a calibrated probability.
-                    "confidence": round(min(0.95, max(0.0, score)), 2),
+                    "ranking_score": round(min(0.95, max(0.0, score)), 2),  
                     "product": product.model_dump(by_alias=False),
                 }
             )

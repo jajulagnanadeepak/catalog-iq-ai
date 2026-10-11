@@ -107,7 +107,7 @@ export function getRecommendations(limit = 6) {
           "Back in stock in the size you follow.",
           "Best price-to-rating ratio in this category.",
         ][i % 6]!,
-        confidence: 0.72 + ((i * 4) % 25) / 100,
+        ranking_score: 0.72 + ((i * 4) % 25) / 100,
         product,
       })),
   );

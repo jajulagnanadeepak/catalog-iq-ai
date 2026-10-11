@@ -45,7 +45,7 @@ export interface Recommendation {
   id: string;
   title: string;
   reason: string;
-  confidence: number;
+  ranking_score: number;
   product: Product;
 }
 

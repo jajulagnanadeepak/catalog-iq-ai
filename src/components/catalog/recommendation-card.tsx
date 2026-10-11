@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import type { Recommendation } from "@/lib/api/types";
 
 export function RecommendationCard({ recommendation }: { recommendation: Recommendation }) {
-  const { product, title, reason, confidence } = recommendation;
+  const { product, title, reason, ranking_score } = recommendation;
   return (
     <Card className="flex gap-4 p-4 shadow-card transition-all hover:-translate-y-0.5 hover:shadow-elevated">
       <Link
@@ -29,9 +29,9 @@ export function RecommendationCard({ recommendation }: { recommendation: Recomme
         </Link>
         <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{reason}</p>
         <div className="mt-2 flex items-center gap-3">
-          <Progress value={confidence * 100} className="h-1.5" />
+          <Progress value={ranking_score * 100} className="h-1.5" />
           <span className="shrink-0 text-xs text-muted-foreground">
-            {Math.round(confidence * 100)}%
+            {Math.round(ranking_score * 100)}/100
           </span>
           <span className="shrink-0 text-sm font-semibold">${product.price}</span>
         </div>
