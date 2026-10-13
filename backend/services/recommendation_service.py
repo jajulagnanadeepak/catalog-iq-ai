@@ -122,23 +122,25 @@ class RecommendationService:
         query_tokens: set[str],
         query_category: Optional[str],
     ) -> bool:
-        """Check descriptive terms against product details."""
+        """Require descriptive query terms to match product metadata."""
 
         category_aliases = {
             "tops": {
                 "top", "tops", "shirt", "shirts", "t-shirt",
-                "tshirts", "tee", "tees", "polo", "blouse", "vest",
+                "tshirt", "tshirts", "tee", "tees", "polo",
+                "blouse", "vest",
             },
             "outerwear": {
-                "jacket", "jackets", "coat", "coats", "blazer", "outerwear",
+                "jacket", "jackets", "coat", "coats",
+                "blazer", "outerwear",
             },
             "trousers": {
-                "trouser", "trousers", "pant", "pants", "jean",
-                "jeans", "chino", "shorts",
+                "trouser", "trousers", "pant", "pants",
+                "jean", "jeans", "chino", "shorts",
             },
             "footwear": {
-                "shoe", "shoes", "sneaker", "sneakers", "boot",
-                "boots", "sandal", "sandals", "footwear",
+                "shoe", "shoes", "sneaker", "sneakers",
+                "boot", "boots", "sandal", "sandals", "footwear",
             },
             "bags": {"bag", "bags", "backpack", "handbag"},
             "swimwear": {"swimwear", "swimsuit", "bikini"},
@@ -152,11 +154,7 @@ class RecommendationService:
             if len(token) > 4 and token.endswith("ies"):
                 return token[:-3] + "y"
 
-            if (
-                len(token) > 3
-                and token.endswith("s")
-                and not token.endswith("ss")
-            ):
+            if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
                 return token[:-1]
 
             return token
@@ -165,6 +163,54 @@ class RecommendationService:
             normalize(term)
             for term in category_aliases.get(query_category, set())
         }
+
+        # Match specific garment types and exclude unrelated types.
+        product_text_for_types = " ".join([
+            product.name or "",
+            " ".join(product.tags or []),
+            product.description or "",
+        ]).lower()
+
+        import re
+        product_type_tokens = set(
+            re.findall(r"[a-z0-9]+", product_text_for_types)
+        )
+        requested_type_tokens = {
+            token.lower().rstrip("s") for token in query_tokens
+        }
+
+        type_groups = {
+            "polo": {"polo"},
+            "sweatshirt": {"sweatshirt"},
+            "turtleneck": {"turtleneck"},
+            "hoodie": {"hoodie"},
+            "cardigan": {"cardigan"},
+            "shirt": {"shirt"},
+            "jacket": {"jacket"},
+            "coat": {"coat"},
+            "blazer": {"blazer"},
+            "dress": {"dress"},
+            "skirt": {"skirt"},
+            "sneaker": {"sneaker"},
+            "boot": {"boot"},
+        }
+
+        # Prevent sweatshirt/turtleneck from appearing in generic shirt results.
+        if "shirt" in requested_type_tokens:
+            if "sweatshirt" in product_type_tokens:
+                return False
+            if "turtleneck" in product_type_tokens:
+                return False
+
+        # "Polo" must be present in the product metadata.
+        if "polo" in requested_type_tokens and "polo" not in product_type_tokens:
+            return False
+
+        # Other specific product types must match their metadata.
+        for requested_type, accepted_tokens in type_groups.items():
+            if requested_type in requested_type_tokens:
+                if not accepted_tokens.intersection(product_type_tokens):
+                    return False
 
         modifiers = {
             normalize(token)
@@ -175,6 +221,7 @@ class RecommendationService:
         if not modifiers:
             return True
 
+        # Match descriptive terms against the product's actual metadata.
         product_text = " ".join(
             [
                 product.name or "",
@@ -188,13 +235,10 @@ class RecommendationService:
 
         product_tokens = {
             normalize(token)
-            for token in re.findall(
-                r"[a-zA-Z0-9]+", product_text.lower()
-            )
+            for token in re.findall(r"[a-zA-Z0-9]+", product_text.lower())
         }
 
         return modifiers.issubset(product_tokens)
-
     def _score_product(
         self,
         product: Product,
