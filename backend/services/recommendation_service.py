@@ -202,7 +202,8 @@ class RecommendationService:
             if "turtleneck" in product_type_tokens:
                 return False
 
-        # "Polo" must be present in the product metadata.
+        # "Polo" must be
+        # present in the product metadata.
         if "polo" in requested_type_tokens and "polo" not in product_type_tokens:
             return False
 
