@@ -1,18 +1,32 @@
-from typing import Optional
-from pydantic import BaseModel, EmailStr
+from typing import Optional,Literal
+from pydantic import BaseModel, EmailStr,Field, field_validator
 
 
 # ── Auth schemas ────────────────────────────────────────────────────────────
 
 class SignupRequest(BaseModel):
     email: EmailStr
-    password: str
-    full_name: Optional[str] = None
+    password: str = Field(min_length=12, max_length=128)
+    full_name: Optional[str] = Field(default=None, max_length=100)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value):
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value):
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
 
 
 class TokenResponse(BaseModel):
@@ -23,6 +37,7 @@ class TokenResponse(BaseModel):
 class TokenData(BaseModel):
     user_id: Optional[str] = None
     email: Optional[str] = None
+
 
 
 # ── Product query schemas ────────────────────────────────────────────────────
@@ -72,7 +87,33 @@ class IntentResult(BaseModel):
     entities: list[IntentEntity]
 
 class IntentEventPayload(BaseModel):
-    session_id: str
-    event_type: str
-    category: Optional[str] = None
-    product_id: Optional[str] = None
+    session_id: str = Field(min_length=1, max_length=128)
+    event_type: Literal["view", "click", "wishlist", "cart", "purchase"]
+    category: Optional[str] = Field(default=None, max_length=100)
+    product_id: Optional[str] = Field(default=None, max_length=128)
+
+    @field_validator("session_id", mode="before")
+    @classmethod
+    def normalize_session_id(cls, value):
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError("Session ID cannot be empty")
+        return value
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def normalize_category(cls, value):
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
+
+    @field_validator("product_id", mode="before")
+    @classmethod
+    def normalize_product_id(cls, value):
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
+

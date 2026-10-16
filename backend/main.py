@@ -15,16 +15,23 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from database.connection import connect_db, close_db
+from services.session_intent_service import session_intent_service
 
 from api.v1 import products, search, intent, recommend, auth
 from routes import semantic_search, copilot
 
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_db()
-    yield
-    await close_db()
+    try:
+        await session_intent_service._ensure_indexes()
+        print("Session event indexes initialized.")
+        yield
+    finally:
+        await close_db()
+
 
 
 def create_app() -> FastAPI:

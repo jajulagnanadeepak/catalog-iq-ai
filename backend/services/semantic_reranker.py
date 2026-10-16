@@ -105,6 +105,10 @@ class SemanticReranker:
     query,
     product,
 )
+            query_match_score = self._query_match_score(
+                query,
+                product,
+            )
 
             # -------------------------------------------------
             # FINAL SCORE
@@ -120,6 +124,7 @@ class SemanticReranker:
     + self.weights["intent"]
     * intent_score
     + 0.10 * occasion_score
+    + 0.15 * query_match_score
 )
 
             scored.append(
@@ -406,6 +411,76 @@ class SemanticReranker:
     # =========================================================
     # ATTRIBUTE SCORE
     # =========================================================
+    
+    # =========================================================
+    # QUERY MATCH SCORE
+    # =========================================================
+
+    def _query_match_score(self, query, product):
+        query_text = str(query).lower()
+
+        product_text = " ".join(
+            str(product.get(field, ""))
+            for field in (
+                "name",
+                "product_type",
+                "category",
+                "department",
+                "section",
+                "garment_group",
+                "description",
+            )
+        ).lower()
+
+        matched = 0
+        requested = 0
+
+        # Explicit fabric preferences
+        fabrics = (
+            "linen",
+            "cotton",
+            "denim",
+            "wool",
+            "silk",
+            "leather",
+        )
+
+        for fabric in fabrics:
+            if re.search(rf"\b{fabric}\b", query_text):
+                requested += 1
+                if re.search(rf"\b{fabric}\b", product_text):
+                    matched += 1
+
+        # Seasonal preferences
+        seasons = {
+            "summer": (
+                "summer", "lightweight", "light weight",
+                "airy", "breathable", "linen",
+            ),
+            "winter": (
+                "winter", "warm", "wool", "fleece",
+                "down", "insulated",
+            ),
+            "monsoon": (
+                "monsoon", "rain", "waterproof",
+                "water-resistant",
+            ),
+            "rain": (
+                "rain", "waterproof", "water-resistant",
+            ),
+        }
+
+        for season, cues in seasons.items():
+            if re.search(rf"\b{season}\b", query_text):
+                requested += 1
+                if any(cue in product_text for cue in cues):
+                    matched += 1
+
+        if requested == 0:
+            return 0.0
+
+        return matched / requested
+
 
     def _attribute_score(
         self,
@@ -1045,6 +1120,69 @@ class SemanticReranker:
                 reasons.append(
                     f"matches your {category} request"
                 )
+        
+        # -----------------------------------------------------
+        # FABRIC EXPLANATION
+        # -----------------------------------------------------
+
+        query_text = str(query).lower()
+
+        product_text = " ".join(
+            str(product.get(field, ""))
+            for field in (
+                "name",
+                "product_type",
+                "category",
+                "department",
+                "section",
+                "garment_group",
+                "description",
+            )
+        ).lower()
+
+        for fabric in (
+            "linen", "cotton", "denim",
+            "wool", "silk", "leather",
+        ):
+            if (
+                re.search(rf"\b{fabric}\b", query_text)
+                and re.search(rf"\b{fabric}\b", product_text)
+            ):
+                reasons.append(
+                    f"matches your {fabric} preference"
+                )
+
+        # -----------------------------------------------------
+        # SEASON EXPLANATION
+        # -----------------------------------------------------
+
+        season_cues = {
+            "summer": (
+                "summer", "lightweight", "light weight",
+                "airy", "breathable", "linen",
+            ),
+            "winter": (
+                "winter", "warm", "wool", "fleece",
+                "down", "insulated",
+            ),
+            "monsoon": (
+                "monsoon", "rain", "waterproof",
+                "water-resistant",
+            ),
+            "rain": (
+                "rain", "waterproof", "water-resistant",
+            ),
+        }
+
+        for season, cues in season_cues.items():
+            if (
+                re.search(rf"\b{season}\b", query_text)
+                and any(cue in product_text for cue in cues)
+            ):
+                reasons.append(
+                    f"has attributes relevant to {season}"
+                )
+
 
         # -----------------------------------------------------
         # COLOR

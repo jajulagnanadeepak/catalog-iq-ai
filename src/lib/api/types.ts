@@ -1,9 +1,11 @@
+
 export interface Product {
   id: string;
   name: string;
   brand: string;
   category: string;
   price: number;
+  currency: string;
   originalPrice?: number;
   rating: number;
   reviews: number;
@@ -14,6 +16,7 @@ export interface Product {
   description: string;
   inStock: boolean;
 }
+
 
 export interface Paginated<T> {
   items: T[];

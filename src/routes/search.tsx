@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Sparkles, SlidersHorizontal } from "lucide-react";
+import { Sparkles, SlidersHorizontal, RefreshCw } from "lucide-react";
+
 import { AppShell } from "@/components/layout/app-shell";
 import { SearchBar } from "@/components/catalog/search-bar";
 import { Filters } from "@/components/catalog/filters";
@@ -11,6 +12,7 @@ import { Pagination } from "@/components/catalog/pagination";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+
 import { postSearch } from "@/lib/api/services";
 import type { ProductQuery } from "@/lib/api/types";
 
@@ -23,8 +25,14 @@ export const Route = createFileRoute("/search")({
         content:
           "Search the catalog in natural language. CatalogIQ AI resolves intent, filters and ranks by semantic similarity.",
       },
-      { property: "og:title", content: "Semantic Search — CatalogIQ AI" },
-      { property: "og:description", content: "Natural-language product search over your catalog." },
+      {
+        property: "og:title",
+        content: "Semantic Search — CatalogIQ AI",
+      },
+      {
+        property: "og:description",
+        content: "Natural-language product search over your catalog.",
+      },
     ],
   }),
   component: SearchPage,
@@ -37,7 +45,11 @@ const SUGGESTIONS = [
   "office-appropriate but comfortable",
 ];
 
-const DEFAULT_QUERY: ProductQuery = { page: 1, pageSize: 8, sort: "relevance" };
+const DEFAULT_QUERY: ProductQuery = {
+  page: 1,
+  pageSize: 8,
+  sort: "relevance",
+};
 
 function SearchPage() {
   const [query, setQuery] = useState("warm coat for rainy commutes under $300");
@@ -46,19 +58,35 @@ function SearchPage() {
   const results = useQuery({
     queryKey: ["search", query, filters],
     queryFn: () => postSearch({ query, ...filters }),
+    enabled: query.trim().length > 0,
   });
 
   const scoreOf = (id: string) =>
-    results.data?.matches.find((m) => m.productId === id)?.score ?? undefined;
+    results.data?.matches.find((match) => match.productId === id)?.score;
+
+  const handleSearch = (value: string) => {
+    const nextQuery = value.trim();
+    if (!nextQuery) return;
+
+    setQuery(nextQuery);
+    setFilters((current) => ({ ...current, page: 1 }));
+  };
+
+  const handleReset = () => {
+    setFilters(DEFAULT_QUERY);
+  };
+
+  // Defensive UI-level de-duplication. The API should still be fixed
+  // if it returns duplicate products for the same search.
+  const uniqueProducts = Array.from(
+    new Map((results.data?.items ?? []).map((product) => [product.id, product])).values(),
+  );
 
   return (
     <AppShell title="Semantic Search" description="Natural-language discovery across the catalog">
       <SearchBar
         defaultValue={query}
-        onSearch={(v) => {
-          setQuery(v);
-          setFilters((f) => ({ ...f, page: 1 }));
-        }}
+        onSearch={handleSearch}
         suggestions={SUGGESTIONS}
         loading={results.isFetching}
       />
@@ -74,28 +102,35 @@ function SearchPage() {
         <div className="hidden lg:block">
           <Filters
             value={filters}
-            onChange={setFilters}
-            onReset={() => setFilters(DEFAULT_QUERY)}
+            onChange={(nextFilters) => setFilters({ ...nextFilters, page: 1 })}
+            onReset={handleReset}
           />
         </div>
 
         <div>
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
-              {results.data ? `${results.data.total} matches` : "Searching…"}
+              {results.isPending
+                ? "Searching…"
+                : results.isError
+                  ? "Search unavailable"
+                  : `${results.data?.total ?? 0} matches`}
             </p>
+
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="outline" size="sm" className="lg:hidden">
-                  <SlidersHorizontal className="size-4" /> Filters
+                  <SlidersHorizontal className="size-4" />
+                  Filters
                 </Button>
               </SheetTrigger>
+
               <SheetContent side="right" className="w-80 overflow-y-auto p-4">
-                <SheetTitle className="sr-only">Filters</SheetTitle>
+                <SheetTitle>Search filters</SheetTitle>
                 <Filters
                   value={filters}
-                  onChange={setFilters}
-                  onReset={() => setFilters(DEFAULT_QUERY)}
+                  onChange={(nextFilters) => setFilters({ ...nextFilters, page: 1 })}
+                  onReset={handleReset}
                 />
               </SheetContent>
             </Sheet>
@@ -103,25 +138,37 @@ function SearchPage() {
 
           {results.isPending ? (
             <ProductGridSkeleton count={8} />
-          ) : results.data && results.data.items.length > 0 ? (
+          ) : results.isError ? (
+            <Card className="flex flex-col items-center gap-3 p-12 text-center">
+              <p className="font-medium">Unable to load search results</p>
+              <p className="text-sm text-muted-foreground">
+                Check your connection and backend server, then try again.
+              </p>
+              <Button variant="outline" onClick={() => void results.refetch()}>
+                <RefreshCw className="size-4" />
+                Retry search
+              </Button>
+            </Card>
+          ) : uniqueProducts.length > 0 ? (
             <>
               <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-                {results.data.items.map((p) => (
-                  <ProductCard key={p.id} product={p} score={scoreOf(p.id)} />
+                {uniqueProducts.map((product) => (
+                  <ProductCard key={product.id} product={product} score={scoreOf(product.id)} />
                 ))}
               </div>
+
               <Pagination
-                page={results.data.page}
-                pageSize={results.data.pageSize}
-                total={results.data.total}
-                onChange={(page) => setFilters((f) => ({ ...f, page }))}
+                page={results.data?.page ?? filters.page ?? 1}
+                pageSize={results.data?.pageSize ?? filters.pageSize ?? 8}
+                total={results.data?.total ?? 0}
+                onChange={(page) => setFilters((current) => ({ ...current, page }))}
               />
             </>
           ) : (
             <Card className="items-center gap-2 p-12 text-center">
-              <p className="font-medium">No matches</p>
+              <p className="font-medium">No matches found</p>
               <p className="text-sm text-muted-foreground">
-                Try loosening the filters or rephrasing your query.
+                Try a different search or loosen the filters.
               </p>
             </Card>
           )}

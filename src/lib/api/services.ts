@@ -19,22 +19,154 @@ import type {
   VisualSearchResult,
 } from "./types";
 
+type ApiProduct = Record<string, unknown>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getString(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function getNumber(record: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = record[key];
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+
+  return undefined;
+}
+
+function getStringArray(record: Record<string, unknown>, keys: string[]): string[] {
+  for (const key of keys) {
+    const value = record[key];
+
+    if (Array.isArray(value)) {
+      return value.filter(
+        (item): item is string => typeof item === "string" && item.trim().length > 0,
+      );
+    }
+  }
+
+  return [];
+}
+
+/**
+ * Convert a backend product into the frontend Product shape.
+ * Missing prices or IDs are not replaced with fabricated values.
+ */
+function mapApiProduct(raw: unknown): Product | null {
+  if (!isRecord(raw)) return null;
+
+  const id = getString(raw, ["product_id", "_id", "id"]);
+  const name = getString(raw, ["name", "title", "product_name"]);
+  const price = getNumber(raw, ["price", "selling_price", "current_price"]);
+
+  if (!id || !name || price === undefined || price < 0) {
+    return null;
+  }
+
+  const category =
+    getString(raw, ["category", "product_category", "department"]) ?? "Uncategorized";
+
+  const image =
+    getString(raw, ["image", "image_url", "thumbnail", "thumbnail_url"]) ??
+    getString(isRecord(raw["images"]) ? raw["images"] : {}, ["primary", "url", "src"]) ??
+    "";
+
+  const originalPrice = getNumber(raw, ["original_price", "originalPrice", "list_price", "mrp"]);
+
+  const rating = getNumber(raw, ["rating", "average_rating"]) ?? 0;
+  const reviews = getNumber(raw, ["reviews", "review_count", "num_reviews"]) ?? 0;
+
+  const currency = getString(raw, ["currency", "price_currency"])?.toUpperCase() ?? "USD";
+
+  const colors = getStringArray(raw, ["colors", "color_options"]);
+  const sizes = getStringArray(raw, ["sizes", "size_options"]);
+  const tags = getStringArray(raw, ["tags", "keywords"]);
+
+  return {
+    id,
+    name,
+    brand: getString(raw, ["brand", "brand_name", "manufacturer"]) ?? "Unknown brand",
+    category,
+    description: getString(raw, ["description", "details", "summary"]) ?? "",
+    image,
+    price,
+    currency,
+    ...(originalPrice !== undefined ? { originalPrice } : {}),
+    rating,
+    reviews,
+    colors,
+    sizes,
+    tags,
+    inStock:
+      typeof raw["in_stock"] === "boolean"
+        ? raw["in_stock"]
+        : typeof raw["inStock"] === "boolean"
+          ? raw["inStock"]
+          : true,
+  };
+}
+
 function filterSort(query: ProductQuery, source: Product[] = PRODUCTS) {
   let items = [...source];
-  if (query.category && query.category !== "All")
-    items = items.filter((p) => p.category === query.category);
-  if (query.minPrice != null) items = items.filter((p) => p.price >= query.minPrice!);
-  if (query.maxPrice != null) items = items.filter((p) => p.price <= query.maxPrice!);
-  if (query.minRating != null) items = items.filter((p) => p.rating >= query.minRating!);
-  if (query.sort === "price-asc") items.sort((a, b) => a.price - b.price);
-  if (query.sort === "price-desc") items.sort((a, b) => b.price - a.price);
-  if (query.sort === "rating") items.sort((a, b) => b.rating - a.rating);
+
+  if (query.category && query.category !== "All") {
+    items = items.filter((product) => product.category === query.category);
+  }
+
+  if (query.minPrice != null) {
+    items = items.filter((product) => product.price >= query.minPrice!);
+  }
+
+  if (query.maxPrice != null) {
+    items = items.filter((product) => product.price <= query.maxPrice!);
+  }
+
+  if (query.minRating != null) {
+    items = items.filter((product) => product.rating >= query.minRating!);
+  }
+
+  if (query.sort === "price-asc") {
+    items.sort((a, b) => a.price - b.price);
+  }
+
+  if (query.sort === "price-desc") {
+    items.sort((a, b) => b.price - a.price);
+  }
+
+  if (query.sort === "rating") {
+    items.sort((a, b) => b.rating - a.rating);
+  }
+
   return items;
 }
 
 function paginate<T>(items: T[], page = 1, pageSize = 8): Paginated<T> {
   const start = (page - 1) * pageSize;
-  return { items: items.slice(start, start + pageSize), page, pageSize, total: items.length };
+
+  return {
+    items: items.slice(start, start + pageSize),
+    page,
+    pageSize,
+    total: items.length,
+  };
 }
 
 /** GET /products */
@@ -49,45 +181,52 @@ export function getProducts(query: ProductQuery = {}) {
 export function getProduct(id: string) {
   return requestWithFallback<Product>(
     () => apiClient.get(`/products/${id}`),
-    () => PRODUCTS.find((p) => p.id === id) ?? PRODUCTS[0]!,
+    () => PRODUCTS.find((product) => product.id === id) ?? PRODUCTS[0]!,
   );
 }
 
-/** POST /search — semantic search */
-/* POST /semantic-search */
-
-export async function postSearch(payload: SearchPayload) {
+/** POST /semantic-search */
+export async function postSearch(payload: SearchPayload): Promise<SearchResult> {
   const response = await apiClient.post("/semantic-search", payload);
+  const data: unknown = response.data;
 
-  const data = response.data;
+  if (!isRecord(data)) {
+    throw new Error("Semantic search returned an invalid response.");
+  }
 
-  const items = data.products.map((p: any) => ({
-    id: p.product_id ?? p._id,
-    name: p.name,
-    brand: p.brand ?? p.department ?? "H&M",
-    category: p.category,
-    description: p.description,
-    image:
-      p.image ??
-      "https://via.placeholder.com/300x400?text=Product",
-    price: p.price ?? 0,
-    originalPrice: p.original_price ?? null,
-    rating: p.rating ?? 4.5,
-    reviews: p.reviews ?? 0,
-    inStock: true,
-    tags: p.tags ?? [],
-  }));
+  const rawProducts = Array.isArray(data["products"])
+    ? data["products"]
+    : Array.isArray(data["items"])
+      ? data["items"]
+      : [];
+
+  const items = rawProducts
+    .map(mapApiProduct)
+    .filter((product): product is Product => product !== null);
+
+  const rawMatches = Array.isArray(data["matches"]) ? data["matches"] : [];
+
+  const matches = rawMatches
+    .filter(isRecord)
+    .map((match) => {
+      const productId = getString(match, ["productId", "product_id", "id"]);
+      const score = getNumber(match, ["score", "similarity", "relevance_score"]);
+
+      if (!productId || score === undefined) return null;
+
+      return { productId, score };
+    })
+    .filter((match): match is { productId: string; score: number } => match !== null);
 
   return {
     items,
     page: 1,
     pageSize: items.length,
-    total: items.length,
-    interpretation: "Semantic Search Results",
-    matches: items.map((item: any) => ({
-      productId: item.id,
-      score: 1,
-    })),
+    total: getNumber(data, ["total", "count", "total_results"]) ?? items.length,
+    interpretation:
+      getString(data, ["interpretation", "message", "query_interpretation"]) ??
+      "Semantic Search Results",
+    matches,
   };
 }
 
@@ -96,9 +235,16 @@ export function getRecommendations(limit = 6) {
   return requestWithFallback<Recommendation[]>(
     () => apiClient.get("/recommend", { params: { limit } }),
     () =>
-      PRODUCTS.slice(0, limit).map((product, i) => ({
-        id: `r-${i}`,
-        title: ["Because you viewed outerwear", "Trending in your size", "Frequently bought together", "Matches your saved palette", "Restocked near you", "High value pick"][i % 6]!,
+      PRODUCTS.slice(0, limit).map((product, index) => ({
+        id: `r-${index}`,
+        title: [
+          "Because you viewed outerwear",
+          "Trending in your size",
+          "Frequently bought together",
+          "Matches your saved palette",
+          "Restocked near you",
+          "High value pick",
+        ][index % 6]!,
         reason: [
           "Similar silhouette and fabric weight to items in your history.",
           "Popular with shoppers who share your style graph.",
@@ -106,8 +252,8 @@ export function getRecommendations(limit = 6) {
           "Colour-matched to your last two purchases.",
           "Back in stock in the size you follow.",
           "Best price-to-rating ratio in this category.",
-        ][i % 6]!,
-        ranking_score: 0.72 + ((i * 4) % 25) / 100,
+        ][index % 6]!,
+        ranking_score: 0.72 + ((index * 4) % 25) / 100,
         product,
       })),
   );
@@ -135,15 +281,19 @@ export function postStylist(payload: StylistPayload) {
     () => apiClient.post("/stylist", payload),
     () => {
       const looks = [pick(["p-001", "p-011", "p-008"]), pick(["p-005", "p-002", "p-006"])];
-      return looks.map((items, i) => ({
-        id: `look-${i}`,
-        title: i === 0 ? `Refined ${payload.occasion || "evening"} layering` : `Relaxed ${payload.style || "everyday"} edit`,
+
+      return looks.map((items, index) => ({
+        id: `look-${index}`,
+        title:
+          index === 0
+            ? `Refined ${payload.occasion || "evening"} layering`
+            : `Relaxed ${payload.style || "everyday"} edit`,
         summary:
-          i === 0
+          index === 0
             ? "Structured outer layer over fine knit, grounded with clean leather. Reads polished without a suit."
             : "Soft cotton base with performance footwear and a utility carry — built for movement.",
         items,
-        total: items.reduce((sum, p) => sum + p.price, 0),
+        total: items.reduce((sum, product) => sum + product.price, 0),
       }));
     },
   );
@@ -155,9 +305,16 @@ export function postBudget(payload: BudgetPayload) {
     () => apiClient.post("/budget", payload),
     () => {
       const chosen = (payload.categories.length ? payload.categories : ["Tops", "Footwear", "Bags"])
-        .map((category) => PRODUCTS.filter((p) => p.category === category).sort((a, b) => a.price - b.price)[0])
-        .filter((p): p is (typeof PRODUCTS)[number] => Boolean(p));
-      const spent = chosen.reduce((s, p) => s + p.price, 0);
+        .map(
+          (category) =>
+            PRODUCTS.filter((product) => product.category === category).sort(
+              (a, b) => a.price - b.price,
+            )[0],
+        )
+        .filter((product): product is (typeof PRODUCTS)[number] => Boolean(product));
+
+      const spent = chosen.reduce((sum, product) => sum + product.price, 0);
+
       return {
         budget: payload.budget,
         spent,
@@ -172,44 +329,40 @@ export function postBudget(payload: BudgetPayload) {
   );
 }
 
-/** POST /copilot */
-export async function postCopilot(payload: CopilotPayload) {
-  // Get the latest user message from the chat
-  const latestMessage =
-    payload.messages[payload.messages.length - 1]?.content ?? "";
+/** POST /copilot/chat */
+export async function postCopilot(payload: CopilotPayload): Promise<CopilotReply> {
+  const latestMessage = payload.messages[payload.messages.length - 1]?.content ?? "";
 
-  // Call your FastAPI backend
-  console.log("Calling backend:", "/copilot/chat");
   const response = await apiClient.post("/copilot/chat", {
     message: latestMessage,
   });
 
-  const data = response.data;
+  const data: unknown = response.data;
+
+  if (!isRecord(data)) {
+    throw new Error("Copilot returned an invalid response.");
+  }
+
+  const message =
+    getString(data, ["response", "message", "reply"]) ??
+    "I couldn't generate a response. Please try again.";
+
+  const rawRecommendations = Array.isArray(data["recommendations"])
+    ? data["recommendations"]
+    : Array.isArray(data["suggestions"])
+      ? data["suggestions"]
+      : [];
+
+  const suggestions = rawRecommendations
+    .map(mapApiProduct)
+    .filter((product): product is Product => product !== null);
 
   return {
     message: {
       role: "assistant",
-      content: data.response,
+      content: message,
     },
-
-    suggestions: data.recommendations.map((p: any) => ({
-      id: p.product_id ?? p._id,
-      name: p.name,
-      brand: p.department ?? "H&M",
-      category: p.category,
-      description: p.description,
-      image:
-        p.image ??
-        "https://via.placeholder.com/300x400?text=Product",
-      price: p.price ?? 0,
-      originalPrice: null,
-      rating: p.rating ?? 4.5,
-      reviews: p.reviews ?? 0,
-      inStock: true,
-      tags: [],
-      recommendationScore: p.recommendation_score,
-      reason: p.reason,
-    })),
+    suggestions,
   };
 }
 
@@ -217,8 +370,12 @@ export async function postCopilot(payload: CopilotPayload) {
 export function postVisualSearch(file: File) {
   const form = new FormData();
   form.append("image", file);
+
   return requestWithFallback<VisualSearchResult>(
-    () => apiClient.post("/visual-search", form, { headers: { "Content-Type": "multipart/form-data" } }),
+    () =>
+      apiClient.post("/visual-search", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      }),
     () => ({
       detected: ["outerwear", "neutral palette", "structured shoulder", "mid-length"],
       items: pick(["p-001", "p-012", "p-011", "p-008"]),

@@ -17,20 +17,30 @@ class SessionIntentService:
     def __init__(self):
         self.collection_name = "session_events"
 
+    
     async def _ensure_indexes(self):
         db = get_database()
         collection = db[self.collection_name]
 
         await collection.create_index(
-            "session_id"
+            "session_id",
+            name="session_id_idx",
         )
 
         await collection.create_index(
             [
                 ("session_id", 1),
                 ("created_at", -1),
-            ]
+            ],
+            name="session_created_at_idx",
         )
+
+        await collection.create_index(
+            "created_at",
+            expireAfterSeconds=30 * 24 * 60 * 60,
+            name="session_events_ttl_30_days",
+        )
+
 
     async def record_event(
         self,
@@ -76,75 +86,59 @@ class SessionIntentService:
             session_id
         )
 
-    async def get_session_intent(
-        self,
-        session_id: str,
-    ):
+    
+    async def get_session_intent(self, session_id: str):
         db = get_database()
+        collection = db[self.collection_name]
 
-        collection = db[
-            self.collection_name
+        pipeline = [
+            {"$match": {"session_id": session_id}},
+            {
+                "$group": {
+                    "_id": "$category",
+                    "score": {"$sum": "$score"},
+                    "event_count": {"$sum": 1},
+                }
+            },
         ]
 
-        events = await collection.find(
-            {
-                "session_id": session_id
-            }
-        ).to_list(length=None)
+        results = await collection.aggregate(pipeline).to_list(length=1000)
 
-        total = 0
+        total = 0.0
         category_scores = {}
+        event_count = 0
 
-        for event in events:
+        for item in results:
+            total += float(item.get("score", 0))
+            event_count += int(item.get("event_count", 0))
 
-            score = float(
-                event.get("score", 0)
-            )
-
-            total += score
-
-            category = event.get(
-                "category"
-            )
-
+            category = item.get("_id")
             if category:
-                category_scores[category] = (
-                    category_scores.get(
-                        category,
-                        0,
-                    )
-                    + score
-                )
+                category_scores[category] = float(item.get("score", 0))
 
         primary_category = None
-        primary_score = 0
+        primary_score = 0.0
 
         if category_scores:
-
             primary_category, primary_score = max(
                 category_scores.items(),
                 key=lambda item: item[1],
             )
 
         confidence = 0.0
-
         if total > 0 and primary_score > 0:
-            confidence = min(
-                primary_score / total,
-                0.99,
-            )
+            confidence = min(primary_score / total, 0.99)
 
         return {
             "session_id": session_id,
             "total_intent_score": total,
             "primary_category": primary_category,
             "primary_category_score": primary_score,
-            "confidence": round(
-                confidence,
-                2,
-            ),
+            "confidence": round(confidence, 2),
             "category_scores": category_scores,
+            "event_count": event_count,
         }
+
 
 
 session_intent_service = SessionIntentService()
