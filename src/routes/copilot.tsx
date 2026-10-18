@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { ProductCard } from "@/components/catalog/product-card";
 import { postCopilot } from "@/lib/api/services";
 import type { CopilotMessage, Product } from "@/lib/api/types";
+import { getShoppingSessionId } from "@/lib/api/tracking";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/copilot")({
@@ -46,7 +47,11 @@ function CopilotPage() {
   const endRef = useRef<HTMLDivElement>(null);
 
   const send = useMutation({
-    mutationFn: (next: CopilotMessage[]) => postCopilot({ messages: next }),
+    mutationFn: (next: CopilotMessage[]) =>
+  postCopilot({
+    messages: next,
+    session_id: getShoppingSessionId(),
+  }),
     onSuccess: (reply) => {
       setMessages((m) => [...m, reply.message]);
       setSuggestions(reply.suggestions);

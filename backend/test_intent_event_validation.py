@@ -65,7 +65,24 @@ def test_oversized_category_rejected():
             event_type="view",
             category="c" * 101,
         )
+def test_category_is_trimmed():
+    payload = IntentEventPayload(
+        session_id="session-123",
+        event_type="view",
+        category="  Shirts  ",
+    )
+    assert payload.category == "Shirts"
 
+
+def test_blank_optional_fields_become_none():
+    payload = IntentEventPayload(
+        session_id="session-123",
+        event_type="view",
+        category="   ",
+        product_id="   ",
+    )
+    assert payload.category is None
+    assert payload.product_id is None
 
 def test_oversized_product_id_rejected():
     with pytest.raises(ValidationError):

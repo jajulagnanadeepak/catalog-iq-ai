@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 
 from services.semantic_reranker import SemanticReranker
 
@@ -67,3 +67,53 @@ def test_reason_explains_linen_and_summer_match(reranker):
 
     assert "linen preference" in reason
     assert "relevant to summer" in reason
+
+
+def test_sneaker_query_excludes_outerwear_even_with_outerwear_session(reranker):
+    results = [
+        {
+            "article_id": "TEST_SNEAKER_001",
+            "distance": 0.30,
+            "product": {
+                "name": "White Everyday Sneakers",
+                "product_type": "Sneakers",
+                "category": "Garment and Shoe",
+                "colour": "White",
+                "department": "Shoes",
+                "section": "Ladies Shoes",
+                "garment_group": "Shoes",
+                "description": "White casual sneakers for everyday wear.",
+            },
+        },
+        {
+            "article_id": "TEST_JACKET_001",
+            "distance": 0.20,
+            "product": {
+                "name": "White Rain Jacket",
+                "product_type": "Jacket",
+                "category": "Garment Upper body",
+                "colour": "White",
+                "department": "Ladies Outerwear",
+                "section": "Ladies Outerwear",
+                "garment_group": "Outdoor",
+                "description": "White waterproof jacket for rainy weather.",
+            },
+        },
+    ]
+
+    ranked = reranker.rerank(
+        query="Find white sneakers for everyday use",
+        results=results,
+        limit=5,
+        session_intent={"primary_category": "outerwear"},
+    )
+
+    assert ranked
+    assert all(
+        reranker._infer_product_category(item["product"]) == "footwear"
+        for item in ranked
+    )
+    assert any(
+        item["product"]["name"] == "White Everyday Sneakers"
+        for item in ranked
+    )

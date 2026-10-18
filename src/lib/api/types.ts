@@ -98,6 +98,7 @@ export interface CopilotMessage {
 
 export interface CopilotPayload {
   messages: CopilotMessage[];
+  session_id?: string;
 }
 
 export interface CopilotReply {

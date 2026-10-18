@@ -186,6 +186,12 @@ export function getProduct(id: string) {
 }
 
 /** POST /semantic-search */
+
+/** POST /semantic-search — semantic product discovery */
+
+/** POST /semantic-search — map the backend semantic-search response. */
+
+/** POST /semantic-search — map actual backend results. */
 export async function postSearch(payload: SearchPayload): Promise<SearchResult> {
   const response = await apiClient.post("/semantic-search", payload);
   const data: unknown = response.data;
@@ -196,39 +202,204 @@ export async function postSearch(payload: SearchPayload): Promise<SearchResult> 
 
   const rawProducts = Array.isArray(data["products"])
     ? data["products"]
-    : Array.isArray(data["items"])
-      ? data["items"]
-      : [];
+    : [];
 
-  const items = rawProducts
-    .map(mapApiProduct)
-    .filter((product): product is Product => product !== null);
+  const mapped = rawProducts.flatMap((entry: unknown) => {
+    if (!isRecord(entry)) return [];
 
-  const rawMatches = Array.isArray(data["matches"]) ? data["matches"] : [];
+    const nested = entry["product"];
+    const raw = isRecord(nested) ? nested : entry;
 
-  const matches = rawMatches
-    .filter(isRecord)
-    .map((match) => {
-      const productId = getString(match, ["productId", "product_id", "id"]);
-      const score = getNumber(match, ["score", "similarity", "relevance_score"]);
+    const id = getString(raw, [
+      "article_id",
+      "_id",
+      "product_id",
+      "id",
+    ]);
+    const name = getString(raw, ["name", "title", "product_name"]);
 
-      if (!productId || score === undefined) return null;
+    if (!id || !name) return [];
 
-      return { productId, score };
-    })
-    .filter((match): match is { productId: string; score: number } => match !== null);
+    const colour = getString(raw, ["colour", "color"]);
+    const price = getNumber(raw, [
+      "price",
+      "selling_price",
+      "current_price",
+    ]);
+    const originalPrice = getNumber(raw, [
+      "original_price",
+      "originalPrice",
+      "list_price",
+      "mrp",
+    ]);
+
+    const product: Product = {
+      id,
+      name,
+      brand:
+        getString(raw, ["brand", "brand_name", "department"]) ??
+        "Unknown brand",
+      category:
+        getString(raw, ["category", "product_type"]) ?? "Other",
+      description:
+        getString(raw, ["description", "details"]) ?? "",
+      image:
+        getString(raw, [
+          "image_url",
+          "image",
+          "imageUrl",
+          "thumbnail_url",
+        ]) ?? "",
+      price: price ?? 0,
+      currency: getString(raw, ["currency"]) ?? "USD",
+      ...(originalPrice !== undefined ? { originalPrice } : {}),
+      rating: getNumber(raw, ["rating", "average_rating"]) ?? 0,
+      reviews: getNumber(raw, ["reviews", "review_count"]) ?? 0,
+      colors: colour ? [colour] : [],
+      sizes: getStringArray(raw, ["sizes", "size_options"]),
+      tags: [
+        getString(raw, ["product_type"]),
+        getString(raw, ["category"]),
+        getString(raw, ["section"]),
+        colour,
+      ].filter((tag): tag is string => Boolean(tag)),
+      inStock:
+        typeof raw["in_stock"] === "boolean"
+          ? raw["in_stock"]
+          : typeof raw["inStock"] === "boolean"
+            ? raw["inStock"]
+            : true,
+    };
+
+    const score = entry["score"];
+
+    return [
+      {
+        product,
+        score:
+          typeof score === "number" && Number.isFinite(score)
+            ? score
+            : 0,
+      },
+    ];
+  });
+
+  // Apply filters to the products returned by semantic search.
+  let filtered = mapped.filter(({ product }) => {
+    if (
+      payload.category &&
+      payload.category !== "All" &&
+      product.category !== payload.category
+    ) {
+      return false;
+    }
+
+    // Unknown prices cannot be verified against a price limit.
+    if (payload.minPrice != null || payload.maxPrice != null) {
+      if (!Number.isFinite(product.price) || product.price <= 0) {
+        return false;
+      }
+
+      if (
+        payload.minPrice != null &&
+        product.price < payload.minPrice
+      ) {
+        return false;
+      }
+
+      if (
+        payload.maxPrice != null &&
+        product.price > payload.maxPrice
+      ) {
+        return false;
+      }
+    }
+
+    if (
+      payload.minRating != null &&
+      product.rating < payload.minRating
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+
+  // Preserve semantic relevance order unless another sort is selected.
+
+  switch (payload.sort ?? "relevance") {
+    case "price-asc":
+      filtered.sort((a, b) => {
+        const aPrice = a.product.price;
+        const bPrice = b.product.price;
+        const aValid = Number.isFinite(aPrice) && aPrice > 0;
+        const bValid = Number.isFinite(bPrice) && bPrice > 0;
+
+        if (!aValid && !bValid) return b.score - a.score;
+        if (!aValid) return 1;
+        if (!bValid) return -1;
+        return aPrice - bPrice;
+      });
+      break;
+
+    case "price-desc":
+      filtered.sort((a, b) => {
+        const aPrice = a.product.price;
+        const bPrice = b.product.price;
+        const aValid = Number.isFinite(aPrice) && aPrice > 0;
+        const bValid = Number.isFinite(bPrice) && bPrice > 0;
+
+        if (!aValid && !bValid) return b.score - a.score;
+        if (!aValid) return 1;
+        if (!bValid) return -1;
+        return bPrice - aPrice;
+      });
+      break;
+
+    case "rating":
+      filtered.sort((a, b) => {
+        const aRating = a.product.rating;
+        const bRating = b.product.rating;
+        const aValid = Number.isFinite(aRating) && aRating > 0;
+        const bValid = Number.isFinite(bRating) && bRating > 0;
+
+        if (!aValid && !bValid) return b.score - a.score;
+        if (!aValid) return 1;
+        if (!bValid) return -1;
+        return bRating - aRating;
+      });
+      break;
+
+    case "relevance":
+    default:
+      filtered.sort((a, b) => b.score - a.score);
+      break;
+  }
+
+
+  const total = filtered.length;
+  const page = Math.max(1, Math.floor(payload.page ?? 1));
+  const pageSize = Math.max(
+    1,
+    Math.min(100, Math.floor(payload.pageSize ?? 8)),
+  );
+  const start = (page - 1) * pageSize;
+  const pageItems = filtered.slice(start, start + pageSize);
 
   return {
-    items,
-    page: 1,
-    pageSize: items.length,
-    total: getNumber(data, ["total", "count", "total_results"]) ?? items.length,
+    items: pageItems.map(({ product }) => product),
+    page,
+    pageSize,
+    total,
     interpretation:
-      getString(data, ["interpretation", "message", "query_interpretation"]) ??
-      "Semantic Search Results",
-    matches,
+      "Semantic search results ranked by relevance to your query.",
+    matches: pageItems.map(({ product, score }) => ({
+      productId: product.id,
+      score,
+    })),
   };
 }
+
 
 /** GET /recommend */
 export function getRecommendations(limit = 6) {
@@ -334,8 +505,9 @@ export async function postCopilot(payload: CopilotPayload): Promise<CopilotReply
   const latestMessage = payload.messages[payload.messages.length - 1]?.content ?? "";
 
   const response = await apiClient.post("/copilot/chat", {
-    message: latestMessage,
-  });
+  message: latestMessage,
+  session_id: payload.session_id,
+});
 
   const data: unknown = response.data;
 
