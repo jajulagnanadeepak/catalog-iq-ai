@@ -471,34 +471,19 @@ export function postStylist(payload: StylistPayload) {
 }
 
 /** POST /budget */
-export function postBudget(payload: BudgetPayload) {
-  return requestWithFallback<BudgetResult>(
-    () => apiClient.post("/budget", payload),
-    () => {
-      const chosen = (payload.categories.length ? payload.categories : ["Tops", "Footwear", "Bags"])
-        .map(
-          (category) =>
-            PRODUCTS.filter((product) => product.category === category).sort(
-              (a, b) => a.price - b.price,
-            )[0],
-        )
-        .filter((product): product is (typeof PRODUCTS)[number] => Boolean(product));
 
-      const spent = chosen.reduce((sum, product) => sum + product.price, 0);
-
-      return {
-        budget: payload.budget,
-        spent,
-        saved: Math.max(0, payload.budget - spent),
-        allocations: chosen.map((product) => ({
-          category: product.category,
-          amount: product.price,
-          product,
-        })),
-      };
-    },
+/** POST /budget */
+export async function postBudget(
+  payload: BudgetPayload,
+): Promise<BudgetResult> {
+  const response = await apiClient.post<BudgetResult>(
+    "/budget",
+    payload,
   );
+
+  return response.data;
 }
+
 
 /** POST /copilot/chat */
 export async function postCopilot(payload: CopilotPayload): Promise<CopilotReply> {
@@ -539,21 +524,28 @@ export async function postCopilot(payload: CopilotPayload): Promise<CopilotReply
 }
 
 /** POST /visual-search */
-export function postVisualSearch(file: File) {
-  const form = new FormData();
-  form.append("image", file);
 
-  return requestWithFallback<VisualSearchResult>(
-    () =>
-      apiClient.post("/visual-search", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      }),
-    () => ({
-      detected: ["outerwear", "neutral palette", "structured shoulder", "mid-length"],
-      items: pick(["p-001", "p-012", "p-011", "p-008"]),
-    }),
+/** POST /visual-search */
+
+/** POST /visual-search */
+export async function postVisualSearch(
+  file: File,
+): Promise<VisualSearchResult> {
+  const form = new FormData();
+  form.append("image", file, file.name);
+
+  const response = await apiClient.post<VisualSearchResult>(
+    "/visual-search",
+    form,
+    {
+      transformRequest: [(data) => data],
+    },
   );
+
+  return response.data;
 }
+
+
 
 /** GET /seasonal */
 export function getSeasonal(season: string) {

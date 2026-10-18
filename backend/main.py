@@ -17,8 +17,8 @@ from config import settings
 from database.connection import connect_db, close_db
 from services.session_intent_service import session_intent_service
 
-from api.v1 import products, search, intent, recommend, auth
-from routes import semantic_search, copilot
+from api.v1 import products, search, intent, recommend, auth, budget_optimizer
+from routes import semantic_search, copilot, visual_search
 
 
 
@@ -64,6 +64,8 @@ def create_app() -> FastAPI:
     app.include_router(intent.router, prefix=PREFIX)
     app.include_router(recommend.router, prefix=PREFIX)
     app.include_router(auth.router, prefix=PREFIX)
+    app.include_router(visual_search.router, prefix=PREFIX)
+    app.include_router(budget_optimizer.router, prefix=PREFIX)
 
     # Semantic Search Router
     app.include_router(semantic_search.router, prefix=PREFIX)
