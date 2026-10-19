@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+﻿import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Leaf } from "lucide-react";
@@ -12,12 +12,12 @@ import { getSeasonal } from "@/lib/api/services";
 export const Route = createFileRoute("/seasonal")({
   head: () => ({
     meta: [
-      { title: "Seasonal Recommendations — CatalogIQ AI" },
+      { title: "Seasonal Recommendations â€” CatalogIQ AI" },
       {
         name: "description",
         content: "Climate and trend signals turned into ready-to-merchandise seasonal collections.",
       },
-      { property: "og:title", content: "Seasonal Recommendations — CatalogIQ AI" },
+      { property: "og:title", content: "Seasonal Recommendations â€” CatalogIQ AI" },
       { property: "og:description", content: "Season-aware collections from your catalog." },
     ],
   }),
@@ -31,7 +31,7 @@ function SeasonalPage() {
   const data = useQuery({ queryKey: ["seasonal", season], queryFn: () => getSeasonal(season) });
 
   return (
-    <AppShell title="Seasonal Recommendations" description="Climate and trend-aware collections">
+    <AppShell title="Seasonal Recommendations" description="Seasonal picks from your product catalog">
       <div className="flex flex-wrap gap-2">
         {SEASONS.map((s) => (
           <Button
@@ -50,7 +50,7 @@ function SeasonalPage() {
         <div>
           <h2 className="text-sm font-semibold">{season} edit</h2>
           <p className="text-sm text-muted-foreground">
-            {data.data?.headline ?? "Loading seasonal signals…"}
+            {data.data?.headline ?? "Loading seasonal signalsâ€¦"}
           </p>
         </div>
       </Card>

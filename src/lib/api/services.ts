@@ -447,28 +447,124 @@ export function postIntent(payload: IntentPayload) {
 }
 
 /** POST /stylist */
+
+/** POST /stylist */
 export function postStylist(payload: StylistPayload) {
   return requestWithFallback<StylistLook[]>(
     () => apiClient.post("/stylist", payload),
     () => {
-      const looks = [pick(["p-001", "p-011", "p-008"]), pick(["p-005", "p-002", "p-006"])];
+      const budget =
+        typeof payload.budget === "number" && payload.budget > 0
+          ? payload.budget
+          : Infinity;
 
-      return looks.map((items, index) => ({
-        id: `look-${index}`,
-        title:
-          index === 0
-            ? `Refined ${payload.occasion || "evening"} layering`
-            : `Relaxed ${payload.style || "everyday"} edit`,
-        summary:
-          index === 0
-            ? "Structured outer layer over fine knit, grounded with clean leather. Reads polished without a suit."
-            : "Soft cotton base with performance footwear and a utility carry — built for movement.",
-        items,
-        total: items.reduce((sum, product) => sum + product.price, 0),
-      }));
+      const occasion = (payload.occasion || "").toLowerCase();
+      const style = (payload.style || "").toLowerCase();
+      const notes = (payload.notes || "").toLowerCase();
+
+      const available = PRODUCTS.filter(
+        (product) => product.inStock && product.price <= budget,
+      );
+
+      const scoreProduct = (product: Product, lookIndex: number) => {
+        const text = [
+          product.name,
+          product.category,
+          product.description,
+          ...product.tags,
+          ...product.colors,
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        let score = product.rating;
+
+        if (
+          /formal|work|office|business|meeting|interview/.test(occasion)
+        ) {
+          if (/formal|smart-casual|work|leather|knit|outerwear/.test(text)) {
+            score += 5;
+          }
+          if (/sport|running|swim|fitness/.test(text)) score -= 4;
+        }
+
+        if (/casual|everyday|weekend/.test(occasion)) {
+          if (/everyday|casual|basics|cotton|sneakers/.test(text)) {
+            score += 4;
+          }
+        }
+
+        if (/evening|party|date|dinner/.test(occasion)) {
+          if (/formal|premium|watch|leather|black/.test(text)) {
+            score += 4;
+          }
+        }
+
+        if (/minimal|classic|refined/.test(style)) {
+          if (/minimal|classic|neutral|formal|leather|knit/.test(text)) {
+            score += 3;
+          }
+          if (/crimson|bright red|neon/.test(text)) score -= 3;
+        }
+
+        if (/sport|athletic|active/.test(style)) {
+          if (/sport|running|fitness|performance/.test(text)) score += 4;
+        }
+
+        if (/avoid bright|no bright|neutral colours|neutral colors/.test(notes)) {
+          if (/crimson|red|neon|bright/.test(text)) score -= 8;
+        }
+
+        if (lookIndex === 0 && /formal|work|office|business/.test(occasion)) {
+          if (/tops|outerwear|accessories|footwear/.test(product.category.toLowerCase())) {
+            score += 2;
+          }
+        }
+
+        return score;
+      };
+
+      const makeLook = (lookIndex: number): StylistLook => {
+        const ranked = [...available].sort(
+          (a, b) =>
+            scoreProduct(b, lookIndex) - scoreProduct(a, lookIndex) ||
+            a.price - b.price,
+        );
+
+        const items: Product[] = [];
+        let total = 0;
+        const usedCategories = new Set<string>();
+
+        for (const product of ranked) {
+          if (items.length >= 3) break;
+          if (usedCategories.has(product.category)) continue;
+          if (total + product.price > budget) continue;
+
+          items.push(product);
+          total += product.price;
+          usedCategories.add(product.category);
+        }
+
+        return {
+          id: `look-${lookIndex + 1}`,
+          title:
+            lookIndex === 0
+              ? `Refined ${payload.occasion || "everyday"} look`
+              : `Alternative ${payload.style || "classic"} look`,
+          summary:
+            items.length > 0
+              ? `Selected from available products to match your preferences and stay within your budget where possible.`
+              : "No available products match this budget. Try increasing it to see more outfit options.",
+          items,
+          total,
+        };
+      };
+
+      return [makeLook(0), makeLook(1)];
     },
   );
 }
+
 
 /** POST /budget */
 
@@ -490,9 +586,9 @@ export async function postCopilot(payload: CopilotPayload): Promise<CopilotReply
   const latestMessage = payload.messages[payload.messages.length - 1]?.content ?? "";
 
   const response = await apiClient.post("/copilot/chat", {
-  message: latestMessage,
-  session_id: payload.session_id,
-});
+    message: latestMessage,
+    session_id: payload.session_id,
+  });
 
   const data: unknown = response.data;
 
@@ -548,20 +644,15 @@ export async function postVisualSearch(
 
 
 /** GET /seasonal */
+
+/** GET /seasonal */
 export function getSeasonal(season: string) {
   return requestWithFallback<SeasonalResult>(
     () => apiClient.get("/seasonal", { params: { season } }),
     () => ({
       season,
-      headline: `${season} picks tuned to your region, climate signals, and past ${season.toLowerCase()} purchases.`,
-      items:
-        season === "Summer"
-          ? pick(["p-005", "p-009", "p-002", "p-006"])
-          : season === "Spring"
-            ? pick(["p-011", "p-008", "p-005", "p-004"])
-            : season === "Autumn"
-              ? pick(["p-011", "p-001", "p-006", "p-010"])
-              : pick(["p-001", "p-012", "p-011", "p-003"]),
+      headline: `Explore ${season.toLowerCase()} recommendations from our catalog.`,
+      items: [],
     }),
   );
 }

@@ -17,21 +17,32 @@ from config import settings
 from database.connection import connect_db, close_db
 from services.session_intent_service import session_intent_service
 
-from api.v1 import products, search, intent, recommend, auth, budget_optimizer
-from routes import semantic_search, copilot, visual_search
-
+from api.v1 import (
+    products,
+    search,
+    intent,
+    recommend,
+    auth,
+    budget_optimizer,
+)
+from routes import (
+    semantic_search,
+    copilot,
+    visual_search,
+    stylist,
+    seasonal,
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_db()
+    await session_intent_service._ensure_indexes()
+
     try:
-        await session_intent_service._ensure_indexes()
-        print("Session event indexes initialized.")
         yield
     finally:
         await close_db()
-
 
 
 def create_app() -> FastAPI:
@@ -64,6 +75,8 @@ def create_app() -> FastAPI:
     app.include_router(intent.router, prefix=PREFIX)
     app.include_router(recommend.router, prefix=PREFIX)
     app.include_router(auth.router, prefix=PREFIX)
+    app.include_router(stylist.router, prefix=PREFIX)
+    app.include_router(seasonal.router, prefix=PREFIX)
     app.include_router(visual_search.router, prefix=PREFIX)
     app.include_router(budget_optimizer.router, prefix=PREFIX)
 
