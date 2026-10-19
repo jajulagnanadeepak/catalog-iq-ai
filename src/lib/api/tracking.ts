@@ -3,12 +3,7 @@ import { apiClient } from "@/lib/api/client";
 
 const SESSION_STORAGE_KEY = "catalogiq.session_id";
 
-export type ShoppingEventType =
-  | "view"
-  | "click"
-  | "wishlist"
-  | "cart"
-  | "purchase";
+export type ShoppingEventType = "view" | "click" | "wishlist" | "cart" | "purchase";
 
 export function getShoppingSessionId(): string {
   let sessionId = window.localStorage.getItem(SESSION_STORAGE_KEY);

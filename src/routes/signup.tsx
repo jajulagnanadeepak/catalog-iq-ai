@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/layout/brand";
 
+import { useAuth } from "@/components/auth-context";
+
 export const Route = createFileRoute("/signup")({
   head: () => ({
     meta: [
@@ -25,16 +27,40 @@ export const Route = createFileRoute("/signup")({
 
 function SignupPage() {
   const navigate = useNavigate();
+  const { signup } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      toast.success("Workspace created — welcome aboard");
+    try {
+      const profile = await signup({
+        email,
+        password,
+        full_name: name,
+      });
+      toast.success(`Workspace created — welcome, ${profile.full_name || profile.email}`);
       navigate({ to: "/dashboard" });
-    }, 800);
+    } catch (err: unknown) {
+      const axiosErr = err as {
+        response?: { status?: number; data?: { detail?: string | Array<{ msg?: string }> } };
+      };
+      const detail = axiosErr.response?.data?.detail;
+      let message = "Could not create workspace. Please check your details.";
+      if (typeof detail === "string") {
+        message = detail;
+      } else if (Array.isArray(detail) && detail[0]?.msg) {
+        message = detail[0].msg;
+      } else if (!axiosErr.response) {
+        message = "Could not reach the server. Please verify your connection.";
+      }
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -50,18 +76,42 @@ function SignupPage() {
           <form className="space-y-4" onSubmit={submit}>
             <div className="space-y-2">
               <Label htmlFor="name">Full name</Label>
-              <Input id="name" required placeholder="Ada Rivers" />
+              <Input
+                id="name"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ada Rivers"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Work email</Label>
-              <Input id="email" type="email" required placeholder="you@company.com" />
+              <Input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" required placeholder="At least 8 characters" />
+              <Input
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 characters"
+              />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
+              {loading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ArrowRight className="size-4" />
+              )}
               Create account
             </Button>
           </form>
@@ -82,14 +132,16 @@ function SignupPage() {
             Ship AI discovery without touching your storefront stack.
           </h2>
           <ul className="mt-8 space-y-3 text-primary-foreground/90">
-            {["Semantic + visual search", "Conversational shopping copilot", "Budget-aware bundling"].map(
-              (item) => (
-                <li key={item} className="flex items-center gap-2">
-                  <span className="size-1.5 rounded-full bg-primary-foreground" />
-                  {item}
-                </li>
-              ),
-            )}
+            {[
+              "Semantic + visual search",
+              "Conversational shopping copilot",
+              "Budget-aware bundling",
+            ].map((item) => (
+              <li key={item} className="flex items-center gap-2">
+                <span className="size-1.5 rounded-full bg-primary-foreground" />
+                {item}
+              </li>
+            ))}
           </ul>
         </div>
         <p className="text-xs text-primary-foreground/70">© CatalogIQ AI</p>

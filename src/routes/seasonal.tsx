@@ -31,7 +31,10 @@ function SeasonalPage() {
   const data = useQuery({ queryKey: ["seasonal", season], queryFn: () => getSeasonal(season) });
 
   return (
-    <AppShell title="Seasonal Recommendations" description="Seasonal picks from your product catalog">
+    <AppShell
+      title="Seasonal Recommendations"
+      description="Seasonal picks from your product catalog"
+    >
       <div className="flex flex-wrap gap-2">
         {SEASONS.map((s) => (
           <Button
@@ -60,7 +63,9 @@ function SeasonalPage() {
           <ProductGridSkeleton count={4} />
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {data.data?.items.map((p) => <ProductCard key={p.id} product={p} />)}
+            {data.data?.items.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
           </div>
         )}
       </div>

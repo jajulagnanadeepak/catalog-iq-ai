@@ -17,6 +17,7 @@ import { RecommendationCard } from "@/components/catalog/recommendation-card";
 import { ProductCard } from "@/components/catalog/product-card";
 import { ListSkeleton, ProductGridSkeleton } from "@/components/catalog/skeletons";
 import { getProducts, getRecommendations } from "@/lib/api/services";
+import type { Recommendation } from "@/lib/api/types";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -102,7 +103,11 @@ function DashboardPage() {
                     <stop offset="100%" stopColor="var(--color-chart-3)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="var(--color-border)"
+                  vertical={false}
+                />
                 <XAxis dataKey="day" tickLine={false} axisLine={false} fontSize={12} />
                 <YAxis tickLine={false} axisLine={false} fontSize={12} />
                 <Tooltip
@@ -143,7 +148,19 @@ function DashboardPage() {
             <ListSkeleton rows={4} />
           ) : (
             <div className="space-y-3">
-              {recs.data?.map((r) => <RecommendationCard key={r.id} recommendation={r} />)}
+              {(Array.isArray(recs.data)
+                ? recs.data
+                : Array.isArray(
+                      (recs.data as { recommendations?: unknown[] } | undefined)?.recommendations,
+                    )
+                  ? (recs.data as { recommendations: unknown[] }).recommendations
+                  : []
+              ).map((r) => (
+                <RecommendationCard
+                  key={(r as { id: string }).id}
+                  recommendation={r as Recommendation}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -160,7 +177,9 @@ function DashboardPage() {
           <ProductGridSkeleton count={4} />
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {products.data?.items.map((p) => <ProductCard key={p.id} product={p} />)}
+            {products.data?.items?.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
           </div>
         )}
       </div>

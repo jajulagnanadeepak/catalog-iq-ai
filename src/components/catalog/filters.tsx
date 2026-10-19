@@ -85,7 +85,9 @@ export function Filters({
         <Label className="text-xs text-muted-foreground">Sort by</Label>
         <Select
           value={value.sort ?? "relevance"}
-          onValueChange={(sort) => onChange({ ...value, sort: sort as NonNullable<ProductQuery["sort"]>, page: 1 })}
+          onValueChange={(sort) =>
+            onChange({ ...value, sort: sort as NonNullable<ProductQuery["sort"]>, page: 1 })
+          }
         >
           <SelectTrigger className="w-full">
             <SelectValue />

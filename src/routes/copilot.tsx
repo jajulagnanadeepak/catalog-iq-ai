@@ -48,13 +48,25 @@ function CopilotPage() {
 
   const send = useMutation({
     mutationFn: (next: CopilotMessage[]) =>
-  postCopilot({
-    messages: next,
-    session_id: getShoppingSessionId(),
-  }),
+      postCopilot({
+        messages: next,
+        session_id: getShoppingSessionId(),
+      }),
     onSuccess: (reply) => {
       setMessages((m) => [...m, reply.message]);
-      setSuggestions(reply.suggestions);
+      if (reply.suggestions && reply.suggestions.length > 0) {
+        setSuggestions(reply.suggestions);
+      }
+    },
+    onError: () => {
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          content:
+            "I couldn't process your request right now. Please ensure the backend is connected and try asking again.",
+        },
+      ]);
     },
   });
 

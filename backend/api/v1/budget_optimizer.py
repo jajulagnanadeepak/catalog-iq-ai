@@ -33,11 +33,15 @@ async def optimize_budget(
         if category.strip()
     ))
 
+    import re
+
     if not categories:
         categories = ["Tops", "Footwear", "Bags"]
 
+    regex_categories = [re.compile(f"^{re.escape(c)}$", re.IGNORECASE) for c in categories]
+
     products = await db["products"].find({
-        "category": {"$in": categories},
+        "category": {"$in": regex_categories},
         "in_stock": {"$ne": False},
     }).to_list(length=500)
 
@@ -64,13 +68,13 @@ async def optimize_budget(
         return (-(rating / max(price, 1)), price)
 
     # Sort products independently within each requested category.
-    by_category = {category: [] for category in categories}
+    by_category = {category.lower(): [] for category in categories}
     for product in products:
-        category = product.get("category")
+        category_lower = str(product.get("category", "")).lower()
         price = price_of(product)
 
-        if category in by_category and 0 < price <= payload.budget:
-            by_category[category].append(product)
+        if category_lower in by_category and 0 < price <= payload.budget:
+            by_category[category_lower].append(product)
 
     for category in by_category:
         by_category[category].sort(key=rank_key)
@@ -81,10 +85,11 @@ async def optimize_budget(
 
     # Pass 1: allocate one suitable product per selected category.
     for category in categories:
+        cat_products = by_category.get(category.lower(), [])
         affordable = next(
             (
                 product
-                for product in by_category[category]
+                for product in cat_products
                 if product["id"] not in selected_ids
                 and spent + price_of(product) <= payload.budget
             ),

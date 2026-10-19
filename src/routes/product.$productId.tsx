@@ -1,4 +1,3 @@
-
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Heart, ShoppingBag, Star, Truck } from "lucide-react";
@@ -11,13 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ProductCard } from "@/components/catalog/product-card";
-import {
-  PanelSkeleton,
-  ProductGridSkeleton,
-} from "@/components/catalog/skeletons";
+import { PanelSkeleton, ProductGridSkeleton } from "@/components/catalog/skeletons";
 
 import { getProduct, getProducts } from "@/lib/api/services";
 import { trackShoppingEvent } from "@/lib/api/tracking";
+import { useCart, useWishlist } from "@/lib/store/cart-wishlist";
 
 export const Route = createFileRoute("/product/$productId")({
   head: () => ({
@@ -25,8 +22,7 @@ export const Route = createFileRoute("/product/$productId")({
       { title: "Product details — CatalogIQ AI" },
       {
         name: "description",
-        content:
-          "Full product detail with AI-matched alternatives and complementary items.",
+        content: "Full product detail with AI-matched alternatives and complementary items.",
       },
       {
         property: "og:title",
@@ -59,20 +55,27 @@ function ProductPage() {
   // Prevent duplicate view events while this component remains mounted.
   const trackedViewKey = useRef<string | null>(null);
 
-  useEffect(() => {
-    if (!p) return;
+  const currentId = p?.id;
+  const currentCategory = p?.category;
 
-    const viewKey = `${p.id}:${p.category ?? ""}`;
+  useEffect(() => {
+    if (!currentId) return;
+
+    const viewKey = `${currentId}:${currentCategory ?? ""}`;
 
     if (trackedViewKey.current === viewKey) return;
 
     trackedViewKey.current = viewKey;
 
     void trackShoppingEvent("view", {
-      id: p.id,
-      category: p.category,
+      id: currentId,
+      category: currentCategory,
     });
-  }, [p?.id, p?.category]);
+  }, [currentId, currentCategory]);
+
+  const { addItem: addToCart } = useCart();
+  const { isWishlisted: checkWishlisted, toggle: toggleWishlist } = useWishlist();
+  const isWishlisted = p ? checkWishlisted(p.id) : false;
 
   const handleAddToCart = () => {
     if (!p) return;
@@ -81,6 +84,8 @@ function ProductPage() {
       toast.error("This product is currently out of stock.");
       return;
     }
+
+    addToCart(p, 1);
 
     void trackShoppingEvent("cart", {
       id: p.id,
@@ -93,29 +98,29 @@ function ProductPage() {
   const handleSaveToWishlist = () => {
     if (!p) return;
 
+    const result = toggleWishlist(p);
+
     void trackShoppingEvent("wishlist", {
       id: p.id,
       category: p.category,
     });
 
-    toast("Saved to wishlist");
+    toast.success(
+      result.isWishlisted
+        ? `${p.name} added to your wishlist`
+        : `${p.name} removed from your wishlist`,
+    );
   };
 
   if (product.isError) {
     return (
-      <AppShell
-        title="Product unavailable"
-        description="We couldn't load this product."
-      >
+      <AppShell title="Product unavailable" description="We couldn't load this product.">
         <Card className="p-6">
           <p className="text-muted-foreground">
             There was a problem loading this product. Please try again.
           </p>
 
-          <Button
-            className="mt-4"
-            onClick={() => void product.refetch()}
-          >
+          <Button className="mt-4" onClick={() => void product.refetch()}>
             Retry
           </Button>
         </Card>
@@ -124,10 +129,7 @@ function ProductPage() {
   }
 
   return (
-    <AppShell
-      title={p?.name ?? "Product"}
-      description={p?.brand}
-    >
+    <AppShell title={p?.name ?? "Product"} description={p?.brand}>
       {product.isPending || !p ? (
         <PanelSkeleton />
       ) : (
@@ -151,13 +153,9 @@ function ProductPage() {
             </Card>
 
             <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                {p.brand}
-              </p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">{p.brand}</p>
 
-              <h2 className="mt-2 text-3xl font-semibold">
-                {p.name}
-              </h2>
+              <h2 className="mt-2 text-3xl font-semibold">{p.name}</h2>
 
               <div className="mt-3 flex items-center gap-3 text-sm">
                 <span className="flex items-center gap-1 text-warning">
@@ -165,9 +163,7 @@ function ProductPage() {
                   {(p.rating ?? 0).toFixed(1)}
                 </span>
 
-                <span className="text-muted-foreground">
-                  {p.reviews ?? 0} reviews
-                </span>
+                <span className="text-muted-foreground">{p.reviews ?? 0} reviews</span>
 
                 <Badge variant={p.inStock ? "secondary" : "outline"}>
                   {p.inStock ? "In stock" : "Out of stock"}
@@ -192,17 +188,13 @@ function ProductPage() {
                 )}
               </div>
 
-              <p className="mt-6 text-muted-foreground">
-                {p.description}
-              </p>
+              <p className="mt-6 text-muted-foreground">{p.description}</p>
 
               <Separator className="my-6" />
 
               <div className="space-y-4">
                 <div>
-                  <p className="text-xs text-muted-foreground">
-                    Colours
-                  </p>
+                  <p className="text-xs text-muted-foreground">Colours</p>
 
                   <div className="mt-2 flex flex-wrap gap-2">
                     {(p.colors ?? []).map((color) => (
@@ -214,9 +206,7 @@ function ProductPage() {
                 </div>
 
                 <div>
-                  <p className="text-xs text-muted-foreground">
-                    Sizes
-                  </p>
+                  <p className="text-xs text-muted-foreground">Sizes</p>
 
                   <div className="mt-2 flex flex-wrap gap-2">
                     {(p.sizes ?? []).map((size) => (
@@ -229,28 +219,27 @@ function ProductPage() {
               </div>
 
               <div className="mt-8 flex flex-wrap gap-3">
-                <Button
-                  size="lg"
-                  disabled={!p.inStock}
-                  onClick={handleAddToCart}
-                >
+                <Button size="lg" disabled={!p.inStock} onClick={handleAddToCart}>
                   <ShoppingBag className="size-4" />
                   Add to cart
                 </Button>
 
                 <Button
                   size="lg"
-                  variant="outline"
+                  variant={isWishlisted ? "secondary" : "outline"}
                   onClick={handleSaveToWishlist}
+                  className={
+                    isWishlisted ? "text-rose-500 border-rose-200 hover:text-rose-600" : ""
+                  }
                 >
-                  <Heart className="size-4" />
-                  Save
+                  <Heart
+                    className={`size-4 ${isWishlisted ? "fill-rose-500 text-rose-500" : ""}`}
+                  />
+                  {isWishlisted ? "Saved" : "Save"}
                 </Button>
 
                 <Button asChild size="lg" variant="ghost">
-                  <Link to="/copilot">
-                    Ask the copilot
-                  </Link>
+                  <Link to="/copilot">Ask the copilot</Link>
                 </Button>
               </div>
 
@@ -262,25 +251,18 @@ function ProductPage() {
           </div>
 
           <div className="mt-12">
-            <h2 className="mb-4 text-base font-semibold">
-              You may also like
-            </h2>
+            <h2 className="mb-4 text-base font-semibold">You may also like</h2>
 
             {related.isPending ? (
               <ProductGridSkeleton count={4} />
             ) : related.isError ? (
-              <p className="text-sm text-muted-foreground">
-                Related products could not be loaded.
-              </p>
+              <p className="text-sm text-muted-foreground">Related products could not be loaded.</p>
             ) : (
               <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
                 {(related.data?.items ?? [])
                   .filter((item) => item.id !== p.id)
                   .map((item) => (
-                    <ProductCard
-                      key={item.id}
-                      product={item}
-                    />
+                    <ProductCard key={item.id} product={item} />
                   ))}
               </div>
             )}

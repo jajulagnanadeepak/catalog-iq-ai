@@ -5,7 +5,7 @@ import axios from "axios";
  * Base URL can be overridden with VITE_API_BASE_URL.
  */
 export const apiClient = axios.create({
-  baseURL: import.meta.env['VITE_API_BASE_URL'] ?? "/api",
+  baseURL: import.meta.env["VITE_API_BASE_URL"] ?? "/api",
   timeout: 15000,
   headers: { "Content-Type": "application/json" },
 });

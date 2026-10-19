@@ -1,4 +1,4 @@
-﻿import type { Product } from "./types";
+import type { Product } from "./types";
 
 const img = (id: string) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=800&q=80`;
 
@@ -206,7 +206,7 @@ export const PRODUCTS: Product[] = [
   },
 ];
 
-export const CATEGORIES = Array.from(new Set(PRODUCTS.map((p) => p.category))).sort();
+export const CATEGORIES = ["Bags", "Footwear", "Outerwear", "Swimwear", "Tops", "Trousers"];
 export const BRANDS = Array.from(new Set(PRODUCTS.map((p) => p.brand))).sort();
 
 export function pick(ids: string[]): Product[] {

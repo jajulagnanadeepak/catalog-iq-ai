@@ -1,8 +1,10 @@
 import asyncio
+import pytest
 
 from services.budget_service import BudgetService
 
 
+@pytest.mark.asyncio
 async def test():
     service = BudgetService()
 

@@ -5,8 +5,8 @@ from bson import ObjectId
 import pytest
 from fastapi import HTTPException
 
-from api.v1.auth import signup, login
-from models.schemas import SignupRequest, LoginRequest
+from api.v1.auth import signup, login, get_me, update_profile
+from models.schemas import SignupRequest, LoginRequest, TokenData, UpdateProfileRequest
 from utils.jwt import verify_token
 
 
@@ -144,3 +144,70 @@ async def test_login_inactive_account_rejected(mock_db):
         await login(body, mock_db)
 
     assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_get_me_success(mock_db):
+    user_id = ObjectId()
+    mock_db["users"].find_one.return_value = {
+        "_id": user_id,
+        "email": "realuser@catalogiq.ai",
+        "full_name": "Real User",
+        "preferred_size": "L",
+        "style_keywords": "classic, minimalist",
+        "is_active": True,
+    }
+
+    token_data = TokenData(user_id=str(user_id), email="realuser@catalogiq.ai")
+    profile = await get_me(token_data, mock_db)
+
+    assert profile.id == str(user_id)
+    assert profile.email == "realuser@catalogiq.ai"
+    assert profile.full_name == "Real User"
+    assert profile.preferred_size == "L"
+    assert profile.style_keywords == "classic, minimalist"
+
+
+@pytest.mark.asyncio
+async def test_get_me_not_found(mock_db):
+    mock_db["users"].find_one.return_value = None
+
+    token_data = TokenData(user_id=str(ObjectId()), email="ghost@example.com")
+    with pytest.raises(HTTPException) as exc:
+        await get_me(token_data, mock_db)
+
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_profile(mock_db):
+    user_id = ObjectId()
+    mock_db["users"].find_one.side_effect = [
+        {
+            "_id": user_id,
+            "email": "test@example.com",
+            "full_name": "Old Name",
+            "is_active": True,
+        },
+        {
+            "_id": user_id,
+            "email": "test@example.com",
+            "full_name": "New Name",
+            "preferred_size": "M",
+            "style_keywords": "utility",
+            "is_active": True,
+        },
+    ]
+    mock_db["users"].update_one = AsyncMock()
+
+    token_data = TokenData(user_id=str(user_id), email="test@example.com")
+    body = UpdateProfileRequest(
+        full_name="New Name",
+        preferred_size="M",
+        style_keywords="utility",
+    )
+
+    updated = await update_profile(body, token_data, mock_db)
+    assert updated.full_name == "New Name"
+    assert updated.preferred_size == "M"
+    mock_db["users"].update_one.assert_awaited_once()

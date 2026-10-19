@@ -1,9 +1,17 @@
 
+from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo.errors import DuplicateKeyError
-from dependencies import get_db
-from models.schemas import SignupRequest, LoginRequest, TokenResponse
+from dependencies import get_db, get_required_user
+from models.schemas import (
+    SignupRequest,
+    LoginRequest,
+    TokenResponse,
+    TokenData,
+    UserProfile,
+    UpdateProfileRequest,
+)
 from models.user import UserInDB
 from utils.security import hash_password, verify_password
 from utils.jwt import create_access_token
@@ -79,3 +87,86 @@ async def login(body: LoginRequest, db: AsyncIOMotorDatabase = Depends(get_db)):
         "email": email,
     })
     return TokenResponse(access_token=token)
+
+
+@router.get(
+    "/me",
+    response_model=UserProfile,
+    summary="Get current authenticated user profile",
+)
+async def get_me(
+    token_data: TokenData = Depends(get_required_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    user_id = token_data.user_id
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token.",
+        )
+
+    query = {"_id": ObjectId(user_id)} if ObjectId.is_valid(user_id) else {"_id": user_id}
+    user = await db["users"].find_one(query)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User account not found.",
+        )
+
+    return UserProfile(
+        id=str(user["_id"]),
+        email=user["email"],
+        full_name=user.get("full_name"),
+        preferred_size=user.get("preferred_size"),
+        style_keywords=user.get("style_keywords"),
+        is_active=user.get("is_active", True),
+    )
+
+
+@router.put(
+    "/profile",
+    response_model=UserProfile,
+    summary="Update current authenticated user profile",
+)
+async def update_profile(
+    body: UpdateProfileRequest,
+    token_data: TokenData = Depends(get_required_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    user_id = token_data.user_id
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token.",
+        )
+
+    query = {"_id": ObjectId(user_id)} if ObjectId.is_valid(user_id) else {"_id": user_id}
+    user = await db["users"].find_one(query)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User account not found.",
+        )
+
+    update_fields = {}
+    if body.full_name is not None:
+        update_fields["full_name"] = body.full_name.strip()
+    if body.preferred_size is not None:
+        update_fields["preferred_size"] = body.preferred_size.strip()
+    if body.style_keywords is not None:
+        update_fields["style_keywords"] = body.style_keywords.strip()
+
+    if update_fields:
+        await db["users"].update_one(query, {"$set": update_fields})
+        user = await db["users"].find_one(query)
+
+    return UserProfile(
+        id=str(user["_id"]),
+        email=user["email"],
+        full_name=user.get("full_name"),
+        preferred_size=user.get("preferred_size"),
+        style_keywords=user.get("style_keywords"),
+        is_active=user.get("is_active", True),
+    )

@@ -1,4 +1,3 @@
-
 export interface Product {
   id: string;
   name: string;
@@ -16,7 +15,6 @@ export interface Product {
   description: string;
   inStock: boolean;
 }
-
 
 export interface Paginated<T> {
   items: T[];

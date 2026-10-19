@@ -23,6 +23,8 @@ import { postBudget } from "@/lib/api/services";
 import { CATEGORIES } from "@/lib/api/mock";
 import type { BudgetPayload } from "@/lib/api/types";
 
+import { toast } from "sonner";
+
 export const Route = createFileRoute("/budget")({
   head: () => ({
     meta: [
@@ -33,7 +35,10 @@ export const Route = createFileRoute("/budget")({
           "Allocate a fixed budget across categories and let CatalogIQ AI maximise value per dollar.",
       },
       { property: "og:title", content: "Budget Optimizer — CatalogIQ AI" },
-      { property: "og:description", content: "Budget-aware basket optimisation across categories." },
+      {
+        property: "og:description",
+        content: "Budget-aware basket optimisation across categories.",
+      },
     ],
   }),
   component: BudgetPage,
@@ -44,7 +49,15 @@ function BudgetPage() {
   const [priority, setPriority] = useState<BudgetPayload["priority"]>("balanced");
   const [categories, setCategories] = useState<string[]>(["Tops", "Footwear", "Bags"]);
 
-  const optimize = useMutation({ mutationFn: postBudget });
+  const optimize = useMutation({
+    mutationFn: postBudget,
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      toast.error(
+        axiosErr.response?.data?.detail ?? "Could not optimize budget. Please try again.",
+      );
+    },
+  });
 
   function toggle(cat: string) {
     setCategories((c) => (c.includes(cat) ? c.filter((x) => x !== cat) : [...c, cat]));
@@ -52,7 +65,16 @@ function BudgetPage() {
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    optimize.mutate({ budget: Number(budget) || 0, categories, priority });
+    const numericBudget = Number(budget);
+    if (!Number.isFinite(numericBudget) || numericBudget <= 0) {
+      toast.error("Please enter a valid budget greater than $0.");
+      return;
+    }
+    if (categories.length === 0) {
+      toast.error("Please select at least one category.");
+      return;
+    }
+    optimize.mutate({ budget: numericBudget, categories, priority });
   }
 
   const result = optimize.data;
@@ -119,7 +141,21 @@ function BudgetPage() {
         <div className="space-y-6">
           {optimize.isPending && <PanelSkeleton />}
 
-          {!optimize.isPending && !result && (
+          {optimize.isError && (
+            <Card className="flex flex-col items-center gap-3 p-12 text-center shadow-card border-destructive/30">
+              <PiggyBank className="size-8 text-destructive" />
+              <p className="font-semibold text-destructive">Budget Optimization Failed</p>
+              <p className="max-w-md text-sm text-muted-foreground">
+                We couldn't calculate an optimal basket with the selected parameters. Try adjusting
+                your budget or categories.
+              </p>
+              <Button variant="outline" size="sm" onClick={submit}>
+                Retry optimization
+              </Button>
+            </Card>
+          )}
+
+          {!optimize.isPending && !optimize.isError && !result && (
             <Card className="items-center gap-2 p-16 text-center shadow-card">
               <PiggyBank className="size-8 text-muted-foreground" />
               <p className="font-medium">No plan yet</p>
@@ -130,7 +166,18 @@ function BudgetPage() {
             </Card>
           )}
 
-          {result && (
+          {!optimize.isPending && result && result.allocations.length === 0 && (
+            <Card className="items-center gap-3 p-14 text-center shadow-card">
+              <PiggyBank className="size-8 text-warning" />
+              <p className="font-semibold">No items match your budget</p>
+              <p className="max-w-md text-sm text-muted-foreground">
+                No catalog items in the selected categories were found under ${result.budget}. Try
+                increasing your budget or selecting additional categories.
+              </p>
+            </Card>
+          )}
+
+          {!optimize.isPending && result && result.allocations.length > 0 && (
             <>
               <Card className="gap-4 p-6 shadow-card">
                 <div className="grid gap-4 sm:grid-cols-3">

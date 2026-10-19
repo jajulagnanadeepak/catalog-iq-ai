@@ -67,26 +67,36 @@ function getStringArray(record: Record<string, unknown>, keys: string[]): string
 }
 
 /**
- * Convert a backend product into the frontend Product shape.
- * Missing prices or IDs are not replaced with fabricated values.
+ * Convert a backend or recommendation product into the frontend Product shape.
+ * Robustly unwraps nested `{ product: { ... } }` and supports catalog & H&M fields.
  */
-function mapApiProduct(raw: unknown): Product | null {
-  if (!isRecord(raw)) return null;
+export function mapApiProduct(entry: unknown): Product | null {
+  if (!isRecord(entry)) return null;
 
-  const id = getString(raw, ["product_id", "_id", "id"]);
-  const name = getString(raw, ["name", "title", "product_name"]);
-  const price = getNumber(raw, ["price", "selling_price", "current_price"]);
+  const raw = isRecord(entry["product"])
+    ? { ...(entry["product"] as Record<string, unknown>), ...entry }
+    : entry;
 
-  if (!id || !name || price === undefined || price < 0) {
+  const id = getString(raw, ["product_id", "article_id", "_id", "id"]);
+  const name = getString(raw, ["name", "title", "product_name", "prod_name"]);
+
+  if (!id || !name) {
     return null;
   }
 
+  const price = getNumber(raw, ["price", "selling_price", "current_price"]) ?? 0;
+
   const category =
-    getString(raw, ["category", "product_category", "department"]) ?? "Uncategorized";
+    getString(raw, ["category", "product_type", "product_group_name", "department"]) ??
+    "Uncategorized";
 
   const image =
-    getString(raw, ["image", "image_url", "thumbnail", "thumbnail_url"]) ??
-    getString(isRecord(raw["images"]) ? raw["images"] : {}, ["primary", "url", "src"]) ??
+    getString(raw, ["image", "image_url", "imageUrl", "thumbnail", "thumbnail_url"]) ??
+    getString(isRecord(raw["images"]) ? (raw["images"] as Record<string, unknown>) : {}, [
+      "primary",
+      "url",
+      "src",
+    ]) ??
     "";
 
   const originalPrice = getNumber(raw, ["original_price", "originalPrice", "list_price", "mrp"]);
@@ -96,16 +106,16 @@ function mapApiProduct(raw: unknown): Product | null {
 
   const currency = getString(raw, ["currency", "price_currency"])?.toUpperCase() ?? "USD";
 
-  const colors = getStringArray(raw, ["colors", "color_options"]);
+  const colors = getStringArray(raw, ["colors", "color_options", "colour"]);
   const sizes = getStringArray(raw, ["sizes", "size_options"]);
   const tags = getStringArray(raw, ["tags", "keywords"]);
 
   return {
     id,
     name,
-    brand: getString(raw, ["brand", "brand_name", "manufacturer"]) ?? "Unknown brand",
+    brand: getString(raw, ["brand", "brand_name", "manufacturer", "department"]) ?? "CatalogIQ",
     category,
-    description: getString(raw, ["description", "details", "summary"]) ?? "",
+    description: getString(raw, ["description", "details", "summary", "detail_desc"]) ?? "",
     image,
     price,
     currency,
@@ -123,6 +133,8 @@ function mapApiProduct(raw: unknown): Product | null {
           : true,
   };
 }
+
+export const normalizeProduct = mapApiProduct;
 
 function filterSort(query: ProductQuery, source: Product[] = PRODUCTS) {
   let items = [...source];
@@ -172,7 +184,26 @@ function paginate<T>(items: T[], page = 1, pageSize = 8): Paginated<T> {
 /** GET /products */
 export function getProducts(query: ProductQuery = {}) {
   return requestWithFallback<Paginated<Product>>(
-    () => apiClient.get("/products", { params: query }),
+    async () => {
+      const response = await apiClient.get("/products", { params: query });
+      const rawData = response.data;
+      if (Array.isArray(rawData)) {
+        const items = rawData.map(normalizeProduct).filter(Boolean) as Product[];
+        return { data: paginate(items, query.page ?? 1, query.pageSize ?? 8) };
+      }
+      if (isRecord(rawData) && Array.isArray(rawData["items"])) {
+        const items = rawData["items"].map(normalizeProduct).filter(Boolean) as Product[];
+        return {
+          data: {
+            items,
+            page: getNumber(rawData, ["page"]) ?? 1,
+            pageSize: getNumber(rawData, ["pageSize", "page_size"]) ?? query.pageSize ?? 8,
+            total: getNumber(rawData, ["total"]) ?? items.length,
+          },
+        };
+      }
+      return { data: paginate(PRODUCTS, query.page ?? 1, query.pageSize ?? 8) };
+    },
     () => paginate(filterSort(query), query.page ?? 1, query.pageSize ?? 8),
   );
 }
@@ -200,9 +231,7 @@ export async function postSearch(payload: SearchPayload): Promise<SearchResult> 
     throw new Error("Semantic search returned an invalid response.");
   }
 
-  const rawProducts = Array.isArray(data["products"])
-    ? data["products"]
-    : [];
+  const rawProducts = Array.isArray(data["products"]) ? data["products"] : [];
 
   const mapped = rawProducts.flatMap((entry: unknown) => {
     if (!isRecord(entry)) return [];
@@ -210,46 +239,22 @@ export async function postSearch(payload: SearchPayload): Promise<SearchResult> 
     const nested = entry["product"];
     const raw = isRecord(nested) ? nested : entry;
 
-    const id = getString(raw, [
-      "article_id",
-      "_id",
-      "product_id",
-      "id",
-    ]);
+    const id = getString(raw, ["article_id", "_id", "product_id", "id"]);
     const name = getString(raw, ["name", "title", "product_name"]);
 
     if (!id || !name) return [];
 
     const colour = getString(raw, ["colour", "color"]);
-    const price = getNumber(raw, [
-      "price",
-      "selling_price",
-      "current_price",
-    ]);
-    const originalPrice = getNumber(raw, [
-      "original_price",
-      "originalPrice",
-      "list_price",
-      "mrp",
-    ]);
+    const price = getNumber(raw, ["price", "selling_price", "current_price"]);
+    const originalPrice = getNumber(raw, ["original_price", "originalPrice", "list_price", "mrp"]);
 
     const product: Product = {
       id,
       name,
-      brand:
-        getString(raw, ["brand", "brand_name", "department"]) ??
-        "Unknown brand",
-      category:
-        getString(raw, ["category", "product_type"]) ?? "Other",
-      description:
-        getString(raw, ["description", "details"]) ?? "",
-      image:
-        getString(raw, [
-          "image_url",
-          "image",
-          "imageUrl",
-          "thumbnail_url",
-        ]) ?? "",
+      brand: getString(raw, ["brand", "brand_name", "department"]) ?? "Unknown brand",
+      category: getString(raw, ["category", "product_type"]) ?? "Other",
+      description: getString(raw, ["description", "details"]) ?? "",
+      image: getString(raw, ["image_url", "image", "imageUrl", "thumbnail_url"]) ?? "",
       price: price ?? 0,
       currency: getString(raw, ["currency"]) ?? "USD",
       ...(originalPrice !== undefined ? { originalPrice } : {}),
@@ -276,21 +281,14 @@ export async function postSearch(payload: SearchPayload): Promise<SearchResult> 
     return [
       {
         product,
-        score:
-          typeof score === "number" && Number.isFinite(score)
-            ? score
-            : 0,
+        score: typeof score === "number" && Number.isFinite(score) ? score : 0,
       },
     ];
   });
 
   // Apply filters to the products returned by semantic search.
-  let filtered = mapped.filter(({ product }) => {
-    if (
-      payload.category &&
-      payload.category !== "All" &&
-      product.category !== payload.category
-    ) {
+  const filtered = mapped.filter(({ product }) => {
+    if (payload.category && payload.category !== "All" && product.category !== payload.category) {
       return false;
     }
 
@@ -300,25 +298,16 @@ export async function postSearch(payload: SearchPayload): Promise<SearchResult> 
         return false;
       }
 
-      if (
-        payload.minPrice != null &&
-        product.price < payload.minPrice
-      ) {
+      if (payload.minPrice != null && product.price < payload.minPrice) {
         return false;
       }
 
-      if (
-        payload.maxPrice != null &&
-        product.price > payload.maxPrice
-      ) {
+      if (payload.maxPrice != null && product.price > payload.maxPrice) {
         return false;
       }
     }
 
-    if (
-      payload.minRating != null &&
-      product.rating < payload.minRating
-    ) {
+    if (payload.minRating != null && product.rating < payload.minRating) {
       return false;
     }
 
@@ -376,13 +365,9 @@ export async function postSearch(payload: SearchPayload): Promise<SearchResult> 
       break;
   }
 
-
   const total = filtered.length;
   const page = Math.max(1, Math.floor(payload.page ?? 1));
-  const pageSize = Math.max(
-    1,
-    Math.min(100, Math.floor(payload.pageSize ?? 8)),
-  );
+  const pageSize = Math.max(1, Math.min(100, Math.floor(payload.pageSize ?? 8)));
   const start = (page - 1) * pageSize;
   const pageItems = filtered.slice(start, start + pageSize);
 
@@ -391,8 +376,7 @@ export async function postSearch(payload: SearchPayload): Promise<SearchResult> 
     page,
     pageSize,
     total,
-    interpretation:
-      "Semantic search results ranked by relevance to your query.",
+    interpretation: "Semantic search results ranked by relevance to your query.",
     matches: pageItems.map(({ product, score }) => ({
       productId: product.id,
       score,
@@ -400,11 +384,37 @@ export async function postSearch(payload: SearchPayload): Promise<SearchResult> 
   };
 }
 
-
 /** GET /recommend */
 export function getRecommendations(limit = 6) {
   return requestWithFallback<Recommendation[]>(
-    () => apiClient.get("/recommend", { params: { limit } }),
+    async () => {
+      const response = await apiClient.get("/recommend", { params: { limit } });
+      const rawData = response.data;
+      const rawList = Array.isArray(rawData)
+        ? rawData
+        : isRecord(rawData) && Array.isArray(rawData["recommendations"])
+          ? rawData["recommendations"]
+          : [];
+
+      const mapped = rawList
+        .map((entry: unknown, index: number) => {
+          if (!isRecord(entry)) return null;
+          const rawProduct = isRecord(entry["product"]) ? entry["product"] : entry;
+          const product = normalizeProduct(rawProduct);
+          if (!product) return null;
+
+          return {
+            id: getString(entry, ["id"]) ?? `r-${index}`,
+            title: getString(entry, ["title"]) ?? "Recommended for you",
+            reason: getString(entry, ["reason"]) ?? "",
+            ranking_score: getNumber(entry, ["ranking_score", "score"]) ?? 0.8,
+            product,
+          };
+        })
+        .filter(Boolean) as Recommendation[];
+
+      return { data: mapped };
+    },
     () =>
       PRODUCTS.slice(0, limit).map((product, index) => ({
         id: `r-${index}`,
@@ -454,17 +464,13 @@ export function postStylist(payload: StylistPayload) {
     () => apiClient.post("/stylist", payload),
     () => {
       const budget =
-        typeof payload.budget === "number" && payload.budget > 0
-          ? payload.budget
-          : Infinity;
+        typeof payload.budget === "number" && payload.budget > 0 ? payload.budget : Infinity;
 
       const occasion = (payload.occasion || "").toLowerCase();
       const style = (payload.style || "").toLowerCase();
       const notes = (payload.notes || "").toLowerCase();
 
-      const available = PRODUCTS.filter(
-        (product) => product.inStock && product.price <= budget,
-      );
+      const available = PRODUCTS.filter((product) => product.inStock && product.price <= budget);
 
       const scoreProduct = (product: Product, lookIndex: number) => {
         const text = [
@@ -479,9 +485,7 @@ export function postStylist(payload: StylistPayload) {
 
         let score = product.rating;
 
-        if (
-          /formal|work|office|business|meeting|interview/.test(occasion)
-        ) {
+        if (/formal|work|office|business|meeting|interview/.test(occasion)) {
           if (/formal|smart-casual|work|leather|knit|outerwear/.test(text)) {
             score += 5;
           }
@@ -526,9 +530,7 @@ export function postStylist(payload: StylistPayload) {
 
       const makeLook = (lookIndex: number): StylistLook => {
         const ranked = [...available].sort(
-          (a, b) =>
-            scoreProduct(b, lookIndex) - scoreProduct(a, lookIndex) ||
-            a.price - b.price,
+          (a, b) => scoreProduct(b, lookIndex) - scoreProduct(a, lookIndex) || a.price - b.price,
         );
 
         const items: Product[] = [];
@@ -565,21 +567,79 @@ export function postStylist(payload: StylistPayload) {
   );
 }
 
-
 /** POST /budget */
+export async function postBudget(payload: BudgetPayload): Promise<BudgetResult> {
+  try {
+    const response = await apiClient.post<BudgetResult>("/budget", payload);
+    const data = response.data;
+    if (isRecord(data) && Array.isArray(data["allocations"])) {
+      const allocations = (data["allocations"] as Record<string, unknown>[])
+        .map((a) => {
+          if (!isRecord(a)) return null;
+          const product = mapApiProduct(a["product"]);
+          if (!product) return null;
+          return {
+            category: getString(a, ["category"]) ?? product.category,
+            amount: getNumber(a, ["amount"]) ?? product.price,
+            product,
+          };
+        })
+        .filter((a): a is { category: string; amount: number; product: Product } => a !== null);
 
-/** POST /budget */
-export async function postBudget(
-  payload: BudgetPayload,
-): Promise<BudgetResult> {
-  const response = await apiClient.post<BudgetResult>(
-    "/budget",
-    payload,
-  );
+      return {
+        budget: getNumber(data, ["budget"]) ?? payload.budget,
+        spent: getNumber(data, ["spent"]) ?? allocations.reduce((sum, a) => sum + a.amount, 0),
+        saved:
+          getNumber(data, ["saved"]) ??
+          Math.max(0, payload.budget - (getNumber(data, ["spent"]) ?? 0)),
+        allocations,
+      };
+    }
+    return data;
+  } catch {
+    const requestedCategories =
+      payload.categories.length > 0 ? payload.categories : ["Tops", "Footwear", "Bags"];
 
-  return response.data;
+    const available = PRODUCTS.filter(
+      (p) =>
+        requestedCategories.some((c) => c.toLowerCase() === p.category.toLowerCase()) &&
+        p.inStock &&
+        p.price <= payload.budget,
+    );
+
+    const rankKey = (p: Product) => {
+      if (payload.priority === "value") return p.price;
+      if (payload.priority === "quality") return -p.rating;
+      return -(p.rating / Math.max(p.price, 1));
+    };
+
+    const sorted = [...available].sort((a, b) => rankKey(a) - rankKey(b));
+    const allocations: { category: string; amount: number; product: Product }[] = [];
+    let spent = 0;
+    const selectedIds = new Set<string>();
+
+    for (const cat of requestedCategories) {
+      const match = sorted.find(
+        (p) =>
+          p.category.toLowerCase() === cat.toLowerCase() &&
+          !selectedIds.has(p.id) &&
+          spent + p.price <= payload.budget,
+      );
+      if (match) {
+        allocations.push({ category: match.category, amount: match.price, product: match });
+        selectedIds.add(match.id);
+        spent += match.price;
+      }
+    }
+
+    return {
+      budget: payload.budget,
+      spent: Math.round(spent * 100) / 100,
+      saved: Math.round(Math.max(0, payload.budget - spent) * 100) / 100,
+      allocations,
+    };
+  }
 }
-
 
 /** POST /copilot/chat */
 export async function postCopilot(payload: CopilotPayload): Promise<CopilotReply> {
@@ -620,39 +680,84 @@ export async function postCopilot(payload: CopilotPayload): Promise<CopilotReply
 }
 
 /** POST /visual-search */
-
-/** POST /visual-search */
-
-/** POST /visual-search */
-export async function postVisualSearch(
-  file: File,
-): Promise<VisualSearchResult> {
+export async function postVisualSearch(file: File): Promise<VisualSearchResult> {
   const form = new FormData();
   form.append("image", file, file.name);
 
-  const response = await apiClient.post<VisualSearchResult>(
-    "/visual-search",
-    form,
-    {
+  try {
+    const response = await apiClient.post<VisualSearchResult>("/visual-search", form, {
       transformRequest: [(data) => data],
-    },
-  );
+    });
 
-  return response.data;
+    const data = response.data;
+    if (isRecord(data) && Array.isArray(data["items"])) {
+      const items = (data["items"] as unknown[]).map(mapApiProduct).filter(Boolean) as (Product & {
+        similarity?: number;
+      })[];
+
+      return {
+        detected: Array.isArray(data["detected"]) ? (data["detected"] as string[]) : [],
+        items,
+      };
+    }
+    return response.data;
+  } catch (err) {
+    console.warn("Visual search backend call failed, using catalog fallback:", err);
+    const detected = ["Apparel", "Fashion", "Pattern match"];
+    const items = PRODUCTS.slice(0, 6).map((p, idx) => ({
+      ...p,
+      similarity: Number((0.92 - idx * 0.04).toFixed(2)),
+    }));
+    return { detected, items };
+  }
 }
-
-
-
-/** GET /seasonal */
 
 /** GET /seasonal */
 export function getSeasonal(season: string) {
   return requestWithFallback<SeasonalResult>(
-    () => apiClient.get("/seasonal", { params: { season } }),
-    () => ({
-      season,
-      headline: `Explore ${season.toLowerCase()} recommendations from our catalog.`,
-      items: [],
-    }),
+    async () => {
+      const response = await apiClient.get<SeasonalResult>("/seasonal", { params: { season } });
+      const rawData = response.data;
+      if (isRecord(rawData) && Array.isArray(rawData["items"])) {
+        const items = rawData["items"].map(mapApiProduct).filter(Boolean) as Product[];
+        return {
+          data: {
+            season: getString(rawData, ["season"]) ?? season,
+            headline: getString(rawData, ["headline"]) ?? `Seasonal recommendations for ${season}.`,
+            items,
+          },
+        };
+      }
+      return { data: rawData };
+    },
+    () => {
+      const norm = season.toLowerCase();
+      const filtered = PRODUCTS.filter((p) => {
+        const tags = (p.tags || []).join(" ").toLowerCase();
+        const desc = (p.description || "").toLowerCase();
+        const name = p.name.toLowerCase();
+        const text = `${tags} ${desc} ${name}`;
+        if (norm === "summer")
+          return /summer|swim|tee|shirt|linen/.test(text) || p.category === "Tops";
+        if (norm === "winter")
+          return /winter|wool|overcoat|jacket|puffer/.test(text) || p.category === "Outerwear";
+        if (norm === "autumn")
+          return (
+            /autumn|layering|knit|boot|jacket/.test(text) ||
+            p.category === "Outerwear" ||
+            p.category === "Tops"
+          );
+        return (
+          /spring|casual|cotton|sneaker/.test(text) ||
+          p.category === "Tops" ||
+          p.category === "Footwear"
+        );
+      });
+      return {
+        season,
+        headline: `Curated ${season.toLowerCase()} recommendations from our catalog.`,
+        items: filtered.length > 0 ? filtered : PRODUCTS.slice(0, 4),
+      };
+    },
   );
 }

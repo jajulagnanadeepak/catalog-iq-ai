@@ -20,6 +20,8 @@ import { ProductCard } from "@/components/catalog/product-card";
 import { PanelSkeleton } from "@/components/catalog/skeletons";
 import { postStylist } from "@/lib/api/services";
 
+import { toast } from "sonner";
+
 export const Route = createFileRoute("/stylist")({
   head: () => ({
     meta: [
@@ -30,7 +32,10 @@ export const Route = createFileRoute("/stylist")({
           "Generate complete looks from occasion, style and budget signals using the CatalogIQ AI stylist.",
       },
       { property: "og:title", content: "AI Stylist — CatalogIQ AI" },
-      { property: "og:description", content: "Complete outfits assembled by AI from your catalog." },
+      {
+        property: "og:description",
+        content: "Complete outfits assembled by AI from your catalog.",
+      },
     ],
   }),
   component: StylistPage,
@@ -47,11 +52,22 @@ function StylistPage() {
   const [budget, setBudget] = useState("800");
   const [notes, setNotes] = useState("");
 
-  const looks = useMutation({ mutationFn: postStylist });
+  const looks = useMutation({
+    mutationFn: postStylist,
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      toast.error(axiosErr.response?.data?.detail ?? "Could not generate looks. Please try again.");
+    },
+  });
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    looks.mutate({ occasion, style, bodyType, budget: Number(budget) || 0, notes });
+    const numericBudget = Number(budget);
+    if (!Number.isFinite(numericBudget) || numericBudget <= 0) {
+      toast.error("Please enter a valid budget greater than $0.");
+      return;
+    }
+    looks.mutate({ occasion, style, bodyType, budget: numericBudget, notes });
   }
 
   return (

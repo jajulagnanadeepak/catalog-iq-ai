@@ -1,16 +1,18 @@
+from pathlib import Path
 import pickle
 
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-from database.connection import connect_db, close_db, get_database
+from database.connection import get_database
 
 
 MODEL_NAME = "all-MiniLM-L6-v2"
+BASE_DIR = Path(__file__).resolve().parent
 
-INDEX_PATH = "hm_products.index"
-IDS_PATH = "hm_product_ids.pkl"
+INDEX_PATH = BASE_DIR / "hm_products.index"
+IDS_PATH = BASE_DIR / "hm_product_ids.pkl"
 
 
 print("Loading semantic search model...")
@@ -19,7 +21,7 @@ model = SentenceTransformer(MODEL_NAME)
 
 print("Loading H&M FAISS index...")
 
-index = faiss.read_index(INDEX_PATH)
+index = faiss.read_index(str(INDEX_PATH))
 
 with open(IDS_PATH, "rb") as f:
     product_ids = pickle.load(f)
@@ -55,53 +57,47 @@ async def semantic_search(query: str, top_k: int = 20):
     if not article_ids:
         return []
 
-    await connect_db()
+    db = get_database()
+    collection = db["catalog_products"]
 
-    try:
-        db = get_database()
-        collection = db["catalog_products"]
-
-        products = await collection.find(
-            {
-                "_id": {
-                    "$in": article_ids
-                }
+    products = await collection.find(
+        {
+            "_id": {
+                "$in": article_ids
             }
-        ).to_list(length=top_k)
-
-        product_map = {
-            product["_id"]: product
-            for product in products
         }
+    ).to_list(length=top_k)
 
-        results = []
+    product_map = {
+        product["_id"]: product
+        for product in products
+    }
 
-        for rank, (idx, distance) in enumerate(
-            zip(indices[0], distances[0]),
-            start=1,
-        ):
-            if idx < 0 or idx >= len(product_ids):
-                continue
+    results = []
 
-            article_id = product_ids[idx]
+    for rank, (idx, distance) in enumerate(
+        zip(indices[0], distances[0]),
+        start=1,
+    ):
+        if idx < 0 or idx >= len(product_ids):
+            continue
 
-            product = product_map.get(article_id)
+        article_id = product_ids[idx]
 
-            if product is None:
-                continue
+        product = product_map.get(article_id)
 
-            product["_id"] = str(product["_id"])
+        if product is None:
+            continue
 
-            results.append(
-                {
-                    "rank": rank,
-                    "article_id": article_id,
-                    "distance": float(distance),
-                    "product": product,
-                }
-            )
+        product["_id"] = str(product["_id"])
 
-        return results
+        results.append(
+            {
+                "rank": rank,
+                "article_id": article_id,
+                "distance": float(distance),
+                "product": product,
+            }
+        )
 
-    finally:
-        await close_db()
+    return results

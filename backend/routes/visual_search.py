@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from io import BytesIO
 from functools import lru_cache
@@ -10,7 +10,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 from transformers import CLIPModel, CLIPProcessor
 
-from database.connection import connect_db, close_db, get_database
+from database.connection import get_database
 
 
 router = APIRouter(tags=["Visual Search"])
@@ -88,28 +88,24 @@ async def visual_search(image: UploadFile = File(...)):
     processor, model = load_clip()
     query_vector = image_embedding(uploaded_image, processor, model)
 
-    await connect_db()
-    try:
-        collection = get_database()["products"]
-        products = await collection.find(
-            {"image": {"$type": "string", "$ne": ""}},
-            {
-                "_id": 1,
-                "name": 1,
-                "title": 1,
-                "category": 1,
-                "price": 1,
-                "image": 1,
-                "brand": 1,
-                "description": 1,
-                "currency": 1,
-                "rating": 1,
-                "reviews": 1,
-                "in_stock": 1,
-            },
-        ).limit(MAX_CATALOG_IMAGES).to_list(length=MAX_CATALOG_IMAGES)
-    finally:
-        await close_db()
+    collection = get_database()["products"]
+    products = await collection.find(
+        {"image": {"$type": "string", "$ne": ""}},
+        {
+            "_id": 1,
+            "name": 1,
+            "title": 1,
+            "category": 1,
+            "price": 1,
+            "image": 1,
+            "brand": 1,
+            "description": 1,
+            "currency": 1,
+            "rating": 1,
+            "reviews": 1,
+            "in_stock": 1,
+        },
+    ).limit(MAX_CATALOG_IMAGES).to_list(length=MAX_CATALOG_IMAGES)
 
     if not products:
         raise HTTPException(
