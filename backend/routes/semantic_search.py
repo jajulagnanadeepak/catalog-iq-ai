@@ -5,6 +5,7 @@ from config import settings
 from search import semantic_search
 from ai.intent_detector import IntentDetector
 from ai.recommendation_engine import RecommendationEngine
+from services.catalog_scope import classify as classify_scope
 from services.semantic_reranker import SemanticReranker
 from services.semantic_reranker_v2 import KIDS_PENALTY, SemanticRerankerV2
 from services.session_intent_service import (
@@ -73,6 +74,29 @@ async def search_products(request: SearchRequest):
                 request.session_id
             )
         )
+
+    # --------------------------------------------------
+    # 2b. Out-of-catalogue queries (v2 + S5 flag only).
+    #     Decided before retrieval; confirmed OOC skips FAISS.
+    # --------------------------------------------------
+
+    if (
+        settings.search_rerank_version == "v2"
+        and settings.search_v2_out_of_catalog
+    ):
+        scope = classify_scope(request.query)
+        if scope.out_of_catalog:
+            return {
+                "success": True,
+                "intent": intent,
+                "session_intent": session_intent,
+                "retrieved_candidates": 0,
+                "count": 0,
+                "products": [],
+                "rerank_version": active_reranker().version,
+                "out_of_catalog": True,
+                "ooc_reason": scope.reason,
+            }
 
     # --------------------------------------------------
     # 3. Recommendation intent

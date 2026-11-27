@@ -134,6 +134,14 @@ class Settings(BaseSettings):
         alias="SEARCH_V2_ATTRIBUTE_BOOST",
     )
 
+    # v2 only (Phase 1, S5 hard tier): queries for product domains the
+    # catalogue does not carry return no products and out_of_catalog=true,
+    # decided before FAISS retrieval.
+    search_v2_out_of_catalog: bool = Field(
+        default=False,
+        alias="SEARCH_V2_OUT_OF_CATALOG",
+    )
+
     @property
     def allowed_origins(self) -> list[str]:
         return parse_origins(self.allowed_origins_raw)

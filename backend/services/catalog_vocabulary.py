@@ -279,6 +279,53 @@ PATTERN_BOOST = 0.25
 
 COLOUR_SYNONYMS = {"navy": "dark blue"}
 
+# ---------------------------------------------------------------------------
+# Catalogue scope (S5 hard tier). Explicit phrases for product domains this
+# fashion catalogue does not carry. Whole-phrase matching only: ambiguous
+# single words are listed as full phrases ("computer mouse", not "mouse";
+# "cricket bat", not "bat"; "garden hose", not "hose").
+# ---------------------------------------------------------------------------
+
+UNSUPPORTED_DOMAINS = {
+    "electronics": [
+        "laptop", "laptops", "computer", "pc", "macbook", "tablet", "tablets",
+        "smartphone", "smartphones", "phone", "phones", "iphone", "android",
+        "samsung", "tv", "television", "monitor", "camera", "cameras", "dslr",
+        "headphones", "headphone", "earbuds", "headset", "speaker", "speakers",
+        "bluetooth", "console", "ps5", "playstation", "xbox", "nintendo",
+        "charger", "power bank", "smartwatch", "printer", "router", "keyboard",
+        "computer mouse", "wireless mouse", "gpu", "rtx", "ssd", "128gb", "4k",
+    ],
+    "appliances": [
+        "refrigerator", "fridge", "washing machine", "microwave", "oven",
+        "air fryer", "fryer", "vacuum", "dishwasher", "kettle", "toaster",
+        "coffee maker", "blender", "hair dryer", "toothbrush",
+    ],
+    "furniture": [
+        "sofa", "couch", "chair", "desk", "mattress", "bed", "wardrobe",
+        "bookshelf", "seater",
+    ],
+    "food_health": [
+        "protein", "whey", "vitamin", "vitamins", "supplement", "supplements",
+        "food", "snack", "litter",
+    ],
+    "auto_tools": [
+        "car", "tyres", "tyre", "tires", "drill", "hammer", "bicycle", "bike",
+        "garden hose",
+    ],
+    "sport_music": [
+        "cricket bat", "baseball bat", "racket", "treadmill", "dumbbell",
+        "dumbbells", "guitar", "piano", "drum", "board game",
+    ],
+}
+
+# Generic accessory head nouns: "<anything> case/cover/sleeve/..." is a
+# catalogue accessory ("phone case", "laptop sleeve"), never out of scope.
+GENERIC_ACCESSORY_HEADS = [
+    "case", "cases", "cover", "covers", "sleeve", "sleeves", "bag", "bags",
+    "holder", "holders", "strap", "straps", "pouch", "pouches",
+]
+
 # Adult phrases that contain a kids word; removed before the checks above.
 ADULT_PHRASES = [
     "baby pink", "baby blue", "girls' night", "girls night", "girl's night",

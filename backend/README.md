@@ -150,3 +150,4 @@ backend/
 | `SEARCH_RERANK_VERSION` | `v1` | Semantic-search reranker: `v1` (baseline) or `v2` (S1 category vocabulary + S2 diversity backfill). Responses in v2 mode include `"rerank_version": "v2"` |
 | `SEARCH_V2_KIDS_DOWNRANK` | `false` | v2 only (S4): children's products get a soft 0.10 score penalty for queries that aren't about children. Nothing is removed |
 | `SEARCH_V2_ATTRIBUTE_BOOST` | `false` | v2 only (S3-lite): +0.25 for products whose name/description matches a pattern the query names (floral, striped, check, …), only when a category is detected; `navy` matches Dark Blue |
+| `SEARCH_V2_OUT_OF_CATALOG` | `false` | v2 only (S5 hard tier): a query with no fashion category, no catalogue product-type/accessory phrase and an explicit unsupported-domain phrase (laptop, sofa, …) skips retrieval and returns `products: []`, `out_of_catalog: true`, `ooc_reason: "unsupported_domain:<domain>"` |
