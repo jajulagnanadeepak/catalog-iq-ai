@@ -1,5 +1,6 @@
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -109,6 +110,14 @@ class Settings(BaseSettings):
     allowed_origins_raw: str = Field(
         default=DEFAULT_ALLOWED_ORIGINS,
         alias="ALLOWED_ORIGINS",
+    )
+
+    # Search reranker used by POST /api/semantic-search. "v1" is the baseline;
+    # "v2" adds the catalogue category vocabulary and diversity backfill
+    # (Phase 1, S1 + S2). Any other value fails at startup.
+    search_rerank_version: Literal["v1", "v2"] = Field(
+        default="v1",
+        alias="SEARCH_RERANK_VERSION",
     )
 
     @property

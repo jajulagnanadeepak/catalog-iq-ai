@@ -147,3 +147,4 @@ backend/
 | `JWT_EXPIRE_MINUTES` | `1440` | Token lifetime (24h) |
 | `APP_ENV` | `development` | `development`/`test` allow dev defaults; anything else enforces a strong `JWT_SECRET` |
 | `ALLOWED_ORIGINS` | localhost dev ports | Comma-separated CORS origins |
+| `SEARCH_RERANK_VERSION` | `v1` | Semantic-search reranker: `v1` (baseline) or `v2` (S1 category vocabulary + S2 diversity backfill). Responses in v2 mode include `"rerank_version": "v2"` |

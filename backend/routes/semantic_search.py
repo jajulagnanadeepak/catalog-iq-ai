@@ -1,10 +1,12 @@
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from config import settings
 from search import semantic_search
 from ai.intent_detector import IntentDetector
 from ai.recommendation_engine import RecommendationEngine
 from services.semantic_reranker import SemanticReranker
+from services.semantic_reranker_v2 import SemanticRerankerV2
 from services.session_intent_service import (
     session_intent_service,
 )
@@ -15,6 +17,14 @@ router = APIRouter(tags=["Semantic Search"])
 intent_detector = IntentDetector()
 recommendation_engine = RecommendationEngine()
 reranker = SemanticReranker()
+reranker_v2 = SemanticRerankerV2()
+
+
+def active_reranker():
+    """v1 unless SEARCH_RERANK_VERSION=v2 (Phase 1, S1 + S2)."""
+    if settings.search_rerank_version == "v2":
+        return reranker_v2
+    return reranker
 
 
 class SearchRequest(BaseModel):
@@ -78,7 +88,9 @@ async def search_products(request: SearchRequest):
     # 5. Personalized lightweight reranking
     # --------------------------------------------------
 
-    products = reranker.rerank(
+    selected_reranker = active_reranker()
+
+    products = selected_reranker.rerank(
         query=request.query,
         results=candidates,
         limit=request.top_k,
@@ -90,7 +102,7 @@ async def search_products(request: SearchRequest):
     # 6. Return final results
     # --------------------------------------------------
 
-    return {
+    response = {
         "success": True,
         "intent": intent,
         "session_intent": session_intent,
@@ -98,3 +110,9 @@ async def search_products(request: SearchRequest):
         "count": len(products),
         "products": products,
     }
+
+    # Additive, v2 only: lets clients and the eval confirm the version.
+    if selected_reranker is reranker_v2:
+        response["rerank_version"] = reranker_v2.version
+
+    return response
