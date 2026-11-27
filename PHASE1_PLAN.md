@@ -120,7 +120,7 @@ Flags (all default off, so the API behaves as v1): `SEARCH_RERANK_VERSION=v1|v2`
 | ~~I can't push.~~ | Resolved | The repository is local; commits and pushes happen only on your instruction |
 | Your `.env` sets `ALLOWED_ORIGINS` without `http(s)://`, or `APP_ENV` is non-dev with a weak secret, so the API **now refuses to start** | Low | Intended: the error message says exactly what to fix, and secrets are never printed |
 | Some pinned versions (for example `cryptography==50.0.0`) may not resolve on Python 3.11 | Unknown | The install step in §3 confirms it. If anything fails I'll adjust only that pin |
-| passlib 1.7.4 + bcrypt 5.0.0 is incompatible: **confirmed**, 4 tests in `test_auth.py` fail at hashing, and signup/login fail in a fresh environment | Confirmed | Existing defect, not fixed yet. WS-B fixes it with existing hashes kept valid |
+| passlib 1.7.4 + bcrypt 5.0.0 is incompatible: **confirmed**, 4 tests in `test_auth.py` fail at hashing, and signup/login fail in a fresh environment | Confirmed | Existing defect. **Fixed by WS-B on branch `fix/ws-b-password-hashing`, implemented and tested but not yet merged into `main`:** Passlib removed, `bcrypt==5.0.0` used directly, existing bcrypt hashes kept valid, new signup passwords limited to 72 UTF-8 bytes |
 | `DATABASE_NAME` case mismatch (code `CatalogIQ` vs old example `catalogiq`) | Medium | Defaults unchanged; `/health/ready` now shows the catalogue count so a wrong name is obvious |
 | `import_hm_catalog.py` wipes `catalog_products` if someone runs it | Existing | Warned in the README now; guarded in WS-E |
 | `/health/ready` reveals counts and error text publicly | Low | Acceptable for now; restricted at the edge in Phase 5 |
@@ -198,13 +198,14 @@ The bundle `catalogiq-phase1.bundle` contains branch `feat/p1-backend-foundation
 |---|---|
 | WS-A | Done and tested |
 | WS-F | Done behind flags (all default off); uncommitted; results in `backend/eval/BASELINE.md` §7 |
-| WS-B, WS-C, WS-D, WS-E | Not started |
+| WS-B | bcrypt/passlib fix implemented and tested on branch `fix/ws-b-password-hashing`, not yet merged into `main`; the rest of WS-B not started |
+| WS-C, WS-D, WS-E | Not started |
 
 `backend/test_config.py` no longer prints the MongoDB URL or JWT secret when collected; it is now an assertion-only test. Bare `pytest` is still not safe because other legacy root scripts touch the database (WS-E).
 
 **Known issues carried forward** (details in `backend/eval/BASELINE.md` §7.5):
 
-- The bcrypt/passlib incompatibility breaks signup/login in a fresh environment (WS-B).
+- The bcrypt/passlib incompatibility breaks signup/login in a fresh environment on `main`. Fixed and tested on branch `fix/ws-b-password-hashing` (Passlib removed, bcrypt 5.0.0 kept, existing hashes supported, new passwords limited to 72 UTF-8 bytes); not yet merged (WS-B).
 - The recommendation intent (best/recommend/suggest/popular) returns 0 results (S10).
 - Copilot still uses v1 search.
 - The inherited gender-inference substring defect.

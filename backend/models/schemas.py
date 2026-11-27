@@ -1,6 +1,8 @@
 from typing import Optional,Literal
 from pydantic import BaseModel, EmailStr,Field, field_validator
 
+from utils.security import BCRYPT_MAX_PASSWORD_BYTES, password_byte_length
+
 
 # ── Auth schemas ────────────────────────────────────────────────────────────
 
@@ -14,6 +16,17 @@ class SignupRequest(BaseModel):
     def normalize_email(cls, value):
         if isinstance(value, str):
             return value.strip().lower()
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def password_fits_bcrypt(cls, value):
+        # bcrypt uses at most 72 bytes; count UTF-8 bytes, not characters.
+        if password_byte_length(value) > BCRYPT_MAX_PASSWORD_BYTES:
+            raise ValueError(
+                f"Password must be at most {BCRYPT_MAX_PASSWORD_BYTES} bytes "
+                "when UTF-8 encoded."
+            )
         return value
 
 
