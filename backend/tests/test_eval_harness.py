@@ -193,7 +193,7 @@ def test_run_end_to_end_writes_reports(tmp_path, tiny_csv, catalog, fake_api):
         {"id": "x1", "group": "out_of_catalog", "query": "gaming laptop", "top_k": 10,
          "expect": {"out_of_catalog": True}, "targets": {"max_results": 0}},
     ]
-    queries.write_text("".join(json.dumps(s) + "\n" for s in specs))
+    queries.write_text("".join(json.dumps(s) + "\n" for s in specs), encoding="utf-8")
     # the ideal ranking: two black women's dresses, kids dress, jumpsuit
     api.responses = {"black dress": _payload("0000000002", "0000000001", "0000000003", "0000000004"),
                      "gaming laptop": _payload("0000000006")}
@@ -208,7 +208,7 @@ def test_run_end_to_end_writes_reports(tmp_path, tiny_csv, catalog, fake_api):
     assert s["in_catalog"]["ndcg@10"] == pytest.approx(1.0)
     assert s["ideal_inconsistent"] == 0
     assert (tmp_path / "reports" / "t.json").exists()
-    md = (tmp_path / "reports" / "t.md").read_text()
+    md = (tmp_path / "reports" / "t.md").read_text(encoding="utf-8")
     assert "Owner baseline queries" in md and "gaming laptop" in md
 
 

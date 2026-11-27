@@ -4,10 +4,9 @@
 # - Re-encoded from UTF-16 to UTF-8 (pip could not read the previous file).
 # - All previously pinned versions are kept unchanged.
 # - Added the ML/data packages the code imports but the file did not list.
-#   They have lower bounds only, because their exact versions could not be
-#   resolved offline. Pin them from a working environment with:
-#       pip freeze | grep -iE "^(faiss-cpu|sentence-transformers|torch|transformers|numpy|pandas|pillow)=="
-#   and replace the ">=" lines below with the exact "==" versions.
+#   numpy, faiss-cpu, sentence-transformers, torch and transformers are pinned
+#   to the versions verified in a clean Python 3.11.9 environment (pip check
+#   clean). pandas and pillow still have lower bounds only.
 
 # --- Web/API (existing pins) ---
 annotated-types==0.8.0
@@ -50,10 +49,10 @@ websockets==17.0.1
 
 # --- ML / data (previously missing; imported by search.py, create_hm_embeddings.py,
 #     routes/visual_search.py, database/import_hm_catalog.py) ---
-numpy>=1.26
+numpy==2.4.6
 pandas>=2.1
 pillow>=10.0
-faiss-cpu>=1.8
-sentence-transformers>=2.7
-torch>=2.2
-transformers>=4.40
+faiss-cpu==1.16.0
+sentence-transformers==6.3.0
+torch==2.15.0
+transformers==5.24.1
