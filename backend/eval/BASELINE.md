@@ -164,14 +164,14 @@ The S3, S4 and S5 flags are independent of each other. v2 responses add `rerank_
 
 ### 7.4 Tests
 
-`pytest tests` (no database, network or index needed): 380 passed. The existing safe tests listed in `backend/README.md`: 37 passed and 4 failed. The 4 failures are the known bcrypt/passlib issue in §7.5, not caused by this work.
+`pytest tests` (no database, network or index needed): 380 passed. The existing safe tests listed in `backend/README.md`: 37 passed and 4 failed. The 4 failures are the known bcrypt/passlib issue in §7.5, not caused by this work. (Fixed by WS-B on branch `fix/ws-b-password-hashing`, not yet merged into `main`; see §7.5.)
 
 ### 7.5 Known issues and limitations
 
 | Issue | Severity | Notes |
 |---|---|---|
 | Recommendation intent returns 0 results | High | Queries with best/recommend/suggest/popular take `RecommendationEngine.recommend()`, which reads the name from the wrong level of the search result (proposal S10). Affects 6 eval queries; pre-existing |
-| bcrypt 5.0.0 / passlib 1.7.4 incompatibility | High | Signup and login fail in a fresh environment; 4 tests in `test_auth.py`. Pre-existing; planned for WS-B |
+| bcrypt 5.0.0 / passlib 1.7.4 incompatibility | High → **resolved on branch, not yet merged** | Signup and login failed in a fresh environment; 4 tests in `test_auth.py`. Pre-existing. **WS-B fix implemented and tested on branch `fix/ws-b-password-hashing`, not yet merged into `main`:** Passlib removed, `bcrypt==5.0.0` kept and called directly (cost 12); existing bcrypt hashes still verify (login uses the legacy first-72-UTF-8-bytes behaviour); new signup passwords are limited to 72 UTF-8 bytes (HTTP 422); missing or malformed stored hashes give 401 instead of 500 |
 | Copilot still uses v1 search | Medium | `ai/copilot.py` creates the v1 `SemanticReranker` |
 | Gender inference substring defect | Medium | Inherited `_infer_gender` matches "men" inside "garment", so 79% of children's products are classed as men's. A simulated fix showed no quality gain; not fixed |
 | Retrieval gaps | Medium | Floral blouses, leopard dresses and polka-dot dresses exist in the catalogue but are not among the 100 FAISS candidates (p4, p6, p7); "black formal shoes for office" (o1) returns sneakers; no comfort data (b4). Reranking cannot fix these (Phase 3) |
