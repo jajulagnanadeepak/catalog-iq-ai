@@ -24,9 +24,16 @@ class RecommendationEngine:
         recommendations = []
         seen_names = set()
 
-        for product in products:
-            # Copy to avoid modifying the original search result.
-            product = dict(product)
+        for item in products:
+            if not isinstance(item, dict):
+                continue
+
+            # search.semantic_search() returns wrappers
+            # {"rank", "article_id", "distance", "product": {...}}; flat
+            # product dicts are still accepted. Copy to avoid modifying
+            # the original search result.
+            nested = item.get("product")
+            product = dict(nested if isinstance(nested, dict) else item)
 
             name = str(product.get("name") or "").strip()
 
