@@ -1,4 +1,3 @@
-from transformers.models.audio_spectrogram_transformer import feature_extraction_audio_spectrogram_transformer
 import re
 from collections import defaultdict
 
