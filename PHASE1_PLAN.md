@@ -153,8 +153,8 @@ pip freeze | grep -iE "^(faiss-cpu|sentence-transformers|torch|transformers|nump
 pytest -q tests
 
 # 4. Existing safe tests (mocked; test_auth reveals the bcrypt question)
-pytest -q test_auth.py test_copilot_validation.py test_intent_event_validation.py \
-          test_recommendation_filtering.py test_semantic_reranker_relevance.py
+pytest -q tests/test_auth.py tests/test_copilot_validation.py tests/test_intent_event_validation.py \
+          tests/test_recommendation_filtering.py tests/test_semantic_reranker_relevance.py
 
 # 5. Config checks (H-13); these print no secrets
 ALLOWED_ORIGINS="http://a.test,http://b.test" python -c "from config import settings; print(settings.allowed_origins)"
@@ -204,7 +204,7 @@ The bundle `catalogiq-phase1.bundle` contains branch `feat/p1-backend-foundation
 
 Post-merge validation on `main` `cc902e0`: `pytest tests` 467 passed (no failures or skips), 58 auth/password tests and 38 recommendation-engine tests passed, and the v1 search files are byte-identical to `c10ee67`. All tests use mocks or in-memory fakes; no live backend or database was used.
 
-`backend/test_config.py` no longer prints the MongoDB URL or JWT secret when collected; it is now an assertion-only test. Bare `pytest` is still not safe because other legacy root scripts touch the database (WS-E).
+`backend/tests/test_config.py` no longer prints the MongoDB URL or JWT secret when collected; it is now an assertion-only test. Bare `pytest` is still not safe because other legacy root scripts touch the database (WS-E).
 
 **Known issues carried forward** (details in `backend/eval/BASELINE.md` §7.5):
 

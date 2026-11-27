@@ -66,12 +66,15 @@ If `/health/ready` shows `catalog_products: 0`, `DATABASE_NAME` is almost certai
 ### 6. Tests
 
 ```bash
-pytest -q tests test_auth.py test_copilot_validation.py \
-  test_intent_event_validation.py test_recommendation_filtering.py \
-  test_semantic_reranker_relevance.py
+pytest -q tests
 ```
 
-These use in-memory fakes or mocks: no MongoDB, network or index needed.
+All backend tests live in `backend/tests/`. They use in-memory fakes or mocks:
+no MongoDB, network or index needed. Run pytest from `backend/`: from the
+repository root `backend/pytest.ini` is not applied, so nothing unsafe is
+collected but async tests without an explicit `@pytest.mark.asyncio` (which
+rely on `asyncio_mode = auto`) fail with "async def functions are not natively
+supported".
 
 > The legacy manual scripts that used to be named `test_*.py` (`test_budget.py`
 > was collected as a test and called MongoDB and the exchange-rate API) now live
@@ -82,9 +85,9 @@ These use in-memory fakes or mocks: no MongoDB, network or index needed.
 > `manual_intent_detection` uses neither. Run one deliberately from `backend/`
 > with `python -m scripts.<name>`, for example
 > `python -m scripts.manual_intent_detection`. A bare `pytest` run from
-> `backend/` now collects only the tests above plus `test_config.py`.
-> (`test_config.py` used to print the MongoDB URL and JWT secret; it is now a
-> plain assertion test that prints nothing.)
+> `backend/` collects only `tests/`. (`tests/test_config.py` used to print the
+> MongoDB URL and JWT secret; it is now a plain assertion test that prints
+> nothing.)
 
 ### 7. Swagger UI
 
