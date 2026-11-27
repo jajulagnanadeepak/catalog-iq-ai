@@ -120,6 +120,13 @@ class Settings(BaseSettings):
         alias="SEARCH_RERANK_VERSION",
     )
 
+    # v2 only (Phase 1, S4): soft downranking of children's products for
+    # queries that are not about children. No effect when the version is v1.
+    search_v2_kids_downrank: bool = Field(
+        default=False,
+        alias="SEARCH_V2_KIDS_DOWNRANK",
+    )
+
     @property
     def allowed_origins(self) -> list[str]:
         return parse_origins(self.allowed_origins_raw)

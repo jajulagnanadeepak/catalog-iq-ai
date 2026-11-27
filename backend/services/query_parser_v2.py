@@ -13,8 +13,34 @@ detection is new:
 
 import re
 
-from services.catalog_vocabulary import QUERY_TERMS
+from services.catalog_vocabulary import (
+    ADULT_PHRASES,
+    AMBIGUOUS_AUDIENCE_TERMS,
+    KIDS_QUERY_TERMS,
+    QUERY_TERMS,
+)
 from services.query_parser import QueryParser
+
+
+def _terms_pattern(terms):
+    alternatives = "|".join(re.escape(t) for t in sorted(terms, key=len, reverse=True))
+    # Longest first, so "children's" wins over "children"; a trailing
+    # apostrophe ("kids' shoes") still counts as a word boundary.
+    return re.compile(rf"(?<![\w-])(?:{alternatives})(?![\w-])")
+
+
+_ADULT_PHRASES = _terms_pattern(ADULT_PHRASES)
+_KIDS_OR_AMBIGUOUS = _terms_pattern(KIDS_QUERY_TERMS + AMBIGUOUS_AUDIENCE_TERMS)
+
+
+def allows_kids(query: str) -> bool:
+    """S4: True when children's products must not be downranked, i.e. the
+    query names children ("girls party dress") or its audience is unclear
+    ("teen hoodie", "dress for my daughter"). Adult phrases that merely
+    contain a kids word ("baby pink", "girls' night", "babydoll") don't count.
+    """
+    text = _ADULT_PHRASES.sub(" ", " ".join(str(query).lower().split()))
+    return bool(_KIDS_OR_AMBIGUOUS.search(text))
 
 # Longest phrases first, so overlap resolution keeps the most specific one.
 _PATTERNS = [

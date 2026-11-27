@@ -18,6 +18,13 @@ S2 - diversity cap with backfill (queries without a category)
   * If the capped pass returns fewer than ``limit``, the remaining slots are
     filled from the skipped candidates in score order.
 
+S4 - children's-product downranking (only with ``kids_penalty > 0``,
+  i.e. SEARCH_V2_KIDS_DOWNRANK=true)
+  * For queries that don't allow children's products (``allows_kids``),
+    ``KIDS_PENALTY`` is subtracted from a children's product's final score
+    before the selection above. Nothing is removed; the returned ``score`` is
+    the ranking score, so it includes the penalty.
+
 Ordering is deterministic: score descending, ties broken by FAISS rank.
 The response items have exactly the v1 shape.
 """
@@ -25,14 +32,19 @@ The response items have exactly the v1 shape.
 from collections import defaultdict
 
 from services.catalog_vocabulary import (
+    KIDS_SECTIONS,
     PRODUCT_GROUP_CATEGORY,
     PRODUCT_TYPE_CATEGORY,
     normalise,
 )
-from services.query_parser_v2 import extract_v2
+from services.query_parser_v2 import allows_kids, extract_v2
 from services.semantic_reranker import SemanticReranker
 
 RERANK_VERSION = "v2"
+
+# S4: soft penalty subtracted from a children's product's final score when the
+# query does not allow children's products. Enabled by SEARCH_V2_KIDS_DOWNRANK.
+KIDS_PENALTY = 0.10
 
 
 def _sort_key(item):
@@ -42,6 +54,19 @@ def _sort_key(item):
 class SemanticRerankerV2(SemanticReranker):
 
     version = RERANK_VERSION
+
+    def __init__(self, kids_penalty: float = 0.0):
+        super().__init__()
+        # 0.0 = S1 + S2 only (identical to v2 before S4).
+        self.kids_penalty = float(kids_penalty)
+
+    # ---------------------------------------------------------
+    # S4: children's products
+    # ---------------------------------------------------------
+
+    @staticmethod
+    def _is_kids_product(product):
+        return normalise(product.get("section")) in KIDS_SECTIONS
 
     # ---------------------------------------------------------
     # S1: product category from the catalogue vocabulary
@@ -73,6 +98,13 @@ class SemanticRerankerV2(SemanticReranker):
         attributes = extract_v2(query)
         query_category = attributes.get("category")
         query_types = attributes.get("product_types")
+
+        # S4: downrank (never remove) children's products for adult queries.
+        kids_penalty = (
+            self.kids_penalty
+            if self.kids_penalty and not allows_kids(query)
+            else 0.0
+        )
 
         scored = []
 
@@ -106,6 +138,9 @@ class SemanticRerankerV2(SemanticReranker):
                 + 0.10 * occasion_score
                 + 0.15 * query_match_score
             )
+
+            if kids_penalty and self._is_kids_product(product):
+                final_score -= kids_penalty
 
             scored.append(
                 {

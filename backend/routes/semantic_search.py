@@ -6,7 +6,7 @@ from search import semantic_search
 from ai.intent_detector import IntentDetector
 from ai.recommendation_engine import RecommendationEngine
 from services.semantic_reranker import SemanticReranker
-from services.semantic_reranker_v2 import SemanticRerankerV2
+from services.semantic_reranker_v2 import KIDS_PENALTY, SemanticRerankerV2
 from services.session_intent_service import (
     session_intent_service,
 )
@@ -18,11 +18,17 @@ intent_detector = IntentDetector()
 recommendation_engine = RecommendationEngine()
 reranker = SemanticReranker()
 reranker_v2 = SemanticRerankerV2()
+reranker_v2_kids = SemanticRerankerV2(kids_penalty=KIDS_PENALTY)
 
 
 def active_reranker():
-    """v1 unless SEARCH_RERANK_VERSION=v2 (Phase 1, S1 + S2)."""
+    """v1 unless SEARCH_RERANK_VERSION=v2 (Phase 1, S1 + S2).
+
+    With v2, SEARCH_V2_KIDS_DOWNRANK=true also enables S4.
+    """
     if settings.search_rerank_version == "v2":
+        if settings.search_v2_kids_downrank:
+            return reranker_v2_kids
         return reranker_v2
     return reranker
 
@@ -112,7 +118,7 @@ async def search_products(request: SearchRequest):
     }
 
     # Additive, v2 only: lets clients and the eval confirm the version.
-    if selected_reranker is reranker_v2:
-        response["rerank_version"] = reranker_v2.version
+    if selected_reranker is not reranker:
+        response["rerank_version"] = selected_reranker.version
 
     return response

@@ -219,3 +219,39 @@ QUERY_TERMS = {
 }
 
 CATEGORIES = frozenset(_CATEGORY_TYPES)
+
+# ---------------------------------------------------------------------------
+# Audience (S4). Children's products are identified by ``section``: these 13
+# sections hold exactly the catalogue's 34,711 "Baby/Children" articles and no
+# section mixes children's and adult products (checked against articles.csv
+# in tests/test_kids_downrank.py).
+# ---------------------------------------------------------------------------
+
+KIDS_SECTIONS = frozenset(
+    normalise(s)
+    for s in [
+        "Baby Boy", "Baby Essentials & Complements", "Baby Girl",
+        "Boys Underwear & Basics", "Girls Underwear & Basics", "Kids & Baby Shoes",
+        "Kids Accessories, Swimwear & D", "Kids Boy", "Kids Girl",
+        "Kids Local Relevance", "Kids Outerwear", "Young Boy", "Young Girl",
+    ]
+)
+
+# A query containing any of these allows children's products (no penalty).
+KIDS_QUERY_TERMS = [
+    "kid", "kids", "kid's", "child", "children", "children's", "childrens",
+    "baby", "babies", "toddler", "toddlers", "infant", "infants", "newborn",
+    "newborns", "girl", "girls", "boy", "boys", "junior", "juniors",
+]
+
+# Audience unclear: also no penalty (keep v2 behaviour).
+AMBIGUOUS_AUDIENCE_TERMS = [
+    "teen", "teens", "teenager", "teenagers", "school", "daughter", "daughters",
+    "son", "sons", "family", "matching",
+]
+
+# Adult phrases that contain a kids word; removed before the checks above.
+ADULT_PHRASES = [
+    "baby pink", "baby blue", "girls' night", "girls night", "girl's night",
+    "babydoll", "baby-doll", "baby doll",
+]
