@@ -88,6 +88,8 @@ Admin accounts are created only by a CLI script that **you** run (`python -m scr
 
 ### WS-F — Search quality baseline (measures only; changes no search behaviour)
 
+**Baseline v0 (manual, by owner, 2026-11-27) recorded with root-cause analysis and the proposed S1–S9 improvements in [`backend/eval/BASELINE.md`](backend/eval/BASELINE.md).** The S-changes are query-time only, behind `SEARCH_RERANK_VERSION=v2` (default `v1`), and wait for your approval.
+
 | Task | Files |
 |---|---|
 | 150–300 fashion queries with graded labels derived from catalogue attributes, plus a hand-reviewed subset; regression cases; out-of-catalogue cases (laptop, headphones) | `backend/eval/queries.jsonl` |
