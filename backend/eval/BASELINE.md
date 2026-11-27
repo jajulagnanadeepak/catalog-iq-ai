@@ -1,6 +1,6 @@
 # Phase 1 — Search-Quality Baseline (WS-F)
 
-**Status (updated 2026-11-27):** Baseline v0 (manual, §1) and the automated v1 baseline are recorded. S1, S2, a trench-coat vocabulary correction, S4, S3-lite and the S5 hard tier are implemented behind feature flags that all default to off, and are evaluated in §7. S6–S10 are not implemented. None of this has been deployed or enabled by default; it is not production-ready.
+**Status (updated 2026-11-28):** Baseline v0 (manual, §1) and the automated v1 baseline are recorded. S1, S2, a trench-coat vocabulary correction, S4, S3-lite and the S5 hard tier are implemented behind feature flags that all default to off, and are evaluated in §7. S6–S9 are not implemented. S10 (recommendation path returning 0 results) is fixed and merged into `main` (§7.5); its result quality has not been evaluated against the live backend. None of this has been deployed or enabled by default; it is not production-ready.
 **Code under test:** `feat/p1-backend-foundation` (WS-A). WS-A does not change search behaviour, so this is also the baseline for `main@5d7ba72`.
 **Endpoint:** `POST /api/semantic-search` (FAISS retrieves 100 candidates → `SemanticReranker`).
 **Constraint:** the catalogue and the FAISS index are not modified, deleted or rebuilt. Every proposed change is query-time code only, behind a flag, and measured against this baseline.
@@ -57,7 +57,7 @@ All of these are query-time changes. **No catalogue or FAISS writes, and no re-e
 | S6 | Score calibration: normalise the weights so they sum to 1. Ranking order is mathematically unchanged; only the displayed score values change. Report `relevance` on a 0–1 scale, and use it for S5's threshold. | Calibration | `services/semantic_reranker.py` |
 | S7 | Explanations only state attributes that actually matched; nothing generic like "matches your search" for weak results | Misleading reasons | `services/semantic_reranker.py` |
 | S8 | Budget regex accepts ₹ / Rs / INR. It only has an effect once prices exist (Phase 2). | Future | `services/query_parser.py` |
-| S10 | **New finding, for approval (not part of the approved S1–S7).** Queries containing best/recommend/suggest/popular take the `recommendation` path. `RecommendationEngine.recommend()` reads `product["name"]` from the search-result wrapper, but the name is in `item["product"]["name"]`, so **every item is skipped and 0 products are returned**. Found by reading the code; the eval's `recommendation` group (r1–r6) measures it. Proposed fix: send this intent through the v2 reranker (v2 only). | Recommendation queries | `routes/semantic_search.py` (v2 branch only) |
+| S10 | **New finding, for approval (not part of the approved S1–S7).** Queries containing best/recommend/suggest/popular take the `recommendation` path. `RecommendationEngine.recommend()` reads `product["name"]` from the search-result wrapper, but the name is in `item["product"]["name"]`, so **every item is skipped and 0 products are returned**. Found by reading the code; the eval's `recommendation` group (r1–r6) measures it. Proposed fix: send this intent through the v2 reranker (v2 only). **Status: root cause fixed with a smaller change than proposed** — `RecommendationEngine.recommend()` now reads the nested `item["product"]` (flat products still accepted); merged into `main` (fix `252f1b2`, PR #3). The intent is **not** routed through the reranker; see §7.5. | Recommendation queries | `routes/semantic_search.py` (v2 branch only); as merged: `ai/recommendation_engine.py` |
 | S9 | The frontend shows `out_of_catalog` and empty results honestly ("We don't carry gaming laptops") | Q5 UX | `src/routes/search.tsx`, `src/lib/api/services.ts` (WS-D) |
 
 **Not in Phase 1** (Phase 3): hybrid BM25 retrieval, filters pushed into FAISS, a cross-encoder reranker, embedding-model changes, re-indexing, LLM query understanding.
@@ -113,7 +113,7 @@ The **v1 code path stays byte-for-byte as it is**: v2 lives in new modules.
 2. ✅ v1 baseline run (`eval/reports/v1.*`). Run it against `http://127.0.0.1:8000`: on Windows, `localhost` first tries IPv6 and adds about 2 s to every request.
 3. ✅ S1, S2, trench correction, S4, S3-lite and S5 hard tier implemented behind flags and evaluated (§7).
 4. ⏳ Decide whether and when to enable the v2 flags outside development. This has not been decided, and the known issues in §7.5 should be considered first.
-5. Deferred: S5b, S6–S10, and the Phase 3 retrieval work (§7.6).
+5. Deferred: S5b, S6–S9, and the Phase 3 retrieval work (§7.6). (S10 was originally deferred here; it is now fixed and merged, §7.5.)
 
 ## 7. Phase 1 results
 
@@ -164,14 +164,14 @@ The S3, S4 and S5 flags are independent of each other. v2 responses add `rerank_
 
 ### 7.4 Tests
 
-`pytest tests` (no database, network or index needed): 380 passed. The existing safe tests listed in `backend/README.md`: 37 passed and 4 failed. The 4 failures are the known bcrypt/passlib issue in §7.5, not caused by this work. (Fixed by WS-B on branch `fix/ws-b-password-hashing`, not yet merged into `main`; see §7.5.)
+`pytest tests` (no database, network or index needed): 380 passed. The existing safe tests listed in `backend/README.md`: 37 passed and 4 failed. The 4 failures are the known bcrypt/passlib issue in §7.5, not caused by this work. (Since fixed by WS-B, merged into `main`; see §7.5. After the WS-B and S10 merges, `pytest tests` on `main` `cc902e0`: 467 passed, and the 4 `test_auth.py` failures no longer occur.)
 
 ### 7.5 Known issues and limitations
 
 | Issue | Severity | Notes |
 |---|---|---|
-| Recommendation intent returns 0 results | High | Queries with best/recommend/suggest/popular take `RecommendationEngine.recommend()`, which reads the name from the wrong level of the search result (proposal S10). Affects 6 eval queries; pre-existing |
-| bcrypt 5.0.0 / passlib 1.7.4 incompatibility | High → **resolved on branch, not yet merged** | Signup and login failed in a fresh environment; 4 tests in `test_auth.py`. Pre-existing. **WS-B fix implemented and tested on branch `fix/ws-b-password-hashing`, not yet merged into `main`:** Passlib removed, `bcrypt==5.0.0` kept and called directly (cost 12); existing bcrypt hashes still verify (login uses the legacy first-72-UTF-8-bytes behaviour); new signup passwords are limited to 72 UTF-8 bytes (HTTP 422); missing or malformed stored hashes give 401 instead of 500 |
+| Recommendation intent returns 0 results | High → **fixed, merged into `main`** | Queries with best/recommend/suggest/popular take `RecommendationEngine.recommend()`, which reads the name from the wrong level of the search result (proposal S10). Affects 6 eval queries; pre-existing. **S10 fix merged into `main`** (fix `252f1b2`, PR #3, merge `cc902e0`): the engine now reads the nested `item["product"]` returned by `semantic_search()` and still accepts flat product dicts. 38 regression tests pass (`tests/test_recommendation_engine.py`), and all six S10 queries (r1–r6) return results through the route; Copilot's recommendation replies return results too. **Limitation: recommendation quality has not been evaluated against the live backend/database.** Results were validated only with test fixtures and in-memory fakes, so the r1–r6 metrics in §7.1 are unchanged until the eval is re-run. Results are in raw FAISS order (no reranker category filtering), and the route still ignores `top_k` for this intent |
+| bcrypt 5.0.0 / passlib 1.7.4 incompatibility | High → **resolved, merged into `main`** | Signup and login failed in a fresh environment; 4 tests in `test_auth.py`. Pre-existing. **WS-B fix merged into `main`** (fix `daa4f19`, PR #2, merge `dbb95e5`); post-merge validation on `main` `cc902e0` passed (58 auth/password tests, 467 in `pytest tests`). Passlib removed, `bcrypt==5.0.0` kept and called directly (cost 12); existing bcrypt hashes still verify (login uses the legacy first-72-UTF-8-bytes behaviour); new signup passwords are limited to 72 UTF-8 bytes (HTTP 422); missing or malformed stored hashes give 401 instead of 500 |
 | Copilot still uses v1 search | Medium | `ai/copilot.py` creates the v1 `SemanticReranker` |
 | Gender inference substring defect | Medium | Inherited `_infer_gender` matches "men" inside "garment", so 79% of children's products are classed as men's. A simulated fix showed no quality gain; not fixed |
 | Retrieval gaps | Medium | Floral blouses, leopard dresses and polka-dot dresses exist in the catalogue but are not among the 100 FAISS candidates (p4, p6, p7); "black formal shoes for office" (o1) returns sneakers; no comfort data (b4). Reranking cannot fix these (Phase 3) |
@@ -192,5 +192,5 @@ The S3, S4 and S5 flags are independent of each other. v2 responses add `rerank_
 - **S5b**: low-confidence flag based on retrieval distance (margin too thin; index-specific).
 - **S6–S8**: score normalisation, explanations only for matched attributes, rupee budgets.
 - **S9**: showing `out_of_catalog` and empty results in the frontend.
-- **S10**: the recommendation-path fix.
+- **S10**: the recommendation-path fix. **Done:** the minimal fix is merged into `main` (§7.5). Still open: evaluating recommendation quality against the live backend, and optionally routing the intent through the reranker as originally proposed.
 - **Phase 3**: retrieval improvements (hybrid keyword + vector retrieval, larger candidate pools, re-ranking models).
