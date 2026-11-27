@@ -127,6 +127,13 @@ class Settings(BaseSettings):
         alias="SEARCH_V2_KIDS_DOWNRANK",
     )
 
+    # v2 only (Phase 1, S3-lite): +0.25 for products matching an explicitly
+    # requested pattern, and navy -> dark blue in colour matching.
+    search_v2_attribute_boost: bool = Field(
+        default=False,
+        alias="SEARCH_V2_ATTRIBUTE_BOOST",
+    )
+
     @property
     def allowed_origins(self) -> list[str]:
         return parse_origins(self.allowed_origins_raw)

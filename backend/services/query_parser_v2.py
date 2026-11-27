@@ -16,7 +16,9 @@ import re
 from services.catalog_vocabulary import (
     ADULT_PHRASES,
     AMBIGUOUS_AUDIENCE_TERMS,
+    CHECK_VERB_FOLLOWERS,
     KIDS_QUERY_TERMS,
+    PATTERN_SYNONYMS,
     QUERY_TERMS,
 )
 from services.query_parser import QueryParser
@@ -41,6 +43,65 @@ def allows_kids(query: str) -> bool:
     """
     text = _ADULT_PHRASES.sub(" ", " ".join(str(query).lower().split()))
     return bool(_KIDS_OR_AMBIGUOUS.search(text))
+
+
+# ---------------------------------------------------------------------------
+# S3-lite: explicit pattern requests
+# ---------------------------------------------------------------------------
+
+def _phrase_regex(phrase: str) -> re.Pattern:
+    # Whole words only; a hyphen counts as part of the word, so "lace-up"
+    # is not "lace" and "check-out" is not "check".
+    return re.compile(rf"(?<![\w-]){re.escape(phrase)}(?![\w-])")
+
+
+# synonym phrase -> the pattern keys it belongs to ("animal print" -> leopard, zebra)
+_PHRASE_PATTERNS: dict[str, set] = {}
+for _key, _synonyms in PATTERN_SYNONYMS.items():
+    for _phrase in _synonyms:
+        _PHRASE_PATTERNS.setdefault(_phrase, set()).add(_key)
+
+_QUERY_PATTERN_REGEXES = [
+    (_phrase_regex(p), frozenset(keys))
+    for p, keys in sorted(_PHRASE_PATTERNS.items(), key=lambda kv: (-len(kv[0]), kv[0]))
+]
+_CHECK_VERB = re.compile(
+    r"(?<![\w-])check\s+(?:" + "|".join(map(re.escape, CHECK_VERB_FOLLOWERS)) + r")(?![\w-])"
+)
+
+# pattern key -> regex matching any of its synonyms in product text
+PRODUCT_PATTERN_REGEXES = {
+    key: re.compile(
+        r"(?<![\w-])(?:"
+        + "|".join(re.escape(s) for s in sorted(synonyms, key=len, reverse=True))
+        + r")(?![\w-])"
+    )
+    for key, synonyms in PATTERN_SYNONYMS.items()
+}
+
+
+def extract_patterns(query: str) -> list[frozenset]:
+    """Requested patterns, one entry per distinct requirement.
+
+    Each entry is the set of pattern keys that satisfy it: usually one key,
+    but "animal print" is satisfied by leopard or zebra. Longest phrases are
+    matched first, so "animal print" / "snake print" consume their "print".
+    Deterministic order (by position in the query).
+    """
+    text = _CHECK_VERB.sub(" ", " ".join(str(query).lower().split()))
+    taken: list[tuple[int, int, frozenset]] = []
+    for regex, keys in _QUERY_PATTERN_REGEXES:
+        for match in regex.finditer(text):
+            start, end = match.span()
+            if any(start < e and s < end for s, e, _ in taken):
+                continue
+            taken.append((start, end, keys))
+
+    requirements: list[frozenset] = []
+    for _, _, keys in sorted(taken):
+        if keys not in requirements:
+            requirements.append(keys)
+    return requirements
 
 # Longest phrases first, so overlap resolution keeps the most specific one.
 _PATTERNS = [

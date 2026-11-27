@@ -25,6 +25,14 @@ S4 - children's-product downranking (only with ``kids_penalty > 0``,
     before the selection above. Nothing is removed; the returned ``score`` is
     the ranking score, so it includes the penalty.
 
+S3-lite - explicit attributes (only with ``attribute_boost=True``,
+  i.e. SEARCH_V2_ATTRIBUTE_BOOST=true)
+  * If the query names a pattern (``extract_patterns``) and S1 detects a
+    category, ``PATTERN_BOOST`` x (share of requested patterns found in the
+    product's name/description) is added to the final score. Non-matching
+    products get nothing; there is no penalty.
+  * Colour synonym navy -> dark blue in the colour check.
+
 Ordering is deterministic: score descending, ties broken by FAISS rank.
 The response items have exactly the v1 shape.
 """
@@ -32,12 +40,19 @@ The response items have exactly the v1 shape.
 from collections import defaultdict
 
 from services.catalog_vocabulary import (
+    COLOUR_SYNONYMS,
     KIDS_SECTIONS,
+    PATTERN_BOOST,
     PRODUCT_GROUP_CATEGORY,
     PRODUCT_TYPE_CATEGORY,
     normalise,
 )
-from services.query_parser_v2 import allows_kids, extract_v2
+from services.query_parser_v2 import (
+    PRODUCT_PATTERN_REGEXES,
+    allows_kids,
+    extract_patterns,
+    extract_v2,
+)
 from services.semantic_reranker import SemanticReranker
 
 RERANK_VERSION = "v2"
@@ -55,10 +70,35 @@ class SemanticRerankerV2(SemanticReranker):
 
     version = RERANK_VERSION
 
-    def __init__(self, kids_penalty: float = 0.0):
+    def __init__(self, kids_penalty: float = 0.0, attribute_boost: bool = False):
         super().__init__()
         # 0.0 = S1 + S2 only (identical to v2 before S4).
         self.kids_penalty = float(kids_penalty)
+        # False = no S3-lite (no pattern boost, no colour synonym).
+        self.attribute_boost = bool(attribute_boost)
+
+    # ---------------------------------------------------------
+    # S3-lite: pattern boost and colour synonym
+    # ---------------------------------------------------------
+
+    @staticmethod
+    def _pattern_match_fraction(product, requirements):
+        """Share of requested patterns found in the product's name or
+        description. Missing text matches nothing (no boost, no penalty)."""
+        text = " ".join(
+            str(product.get(field) or "") for field in ("name", "description")
+        ).lower()
+        matched = sum(
+            any(PRODUCT_PATTERN_REGEXES[key].search(text) for key in keys)
+            for keys in requirements
+        )
+        return matched / len(requirements)
+
+    def _attribute_score(self, product, attributes):
+        colour = attributes.get("color")
+        if self.attribute_boost and colour in COLOUR_SYNONYMS:
+            attributes = {**attributes, "color": COLOUR_SYNONYMS[colour]}
+        return super()._attribute_score(product, attributes)
 
     # ---------------------------------------------------------
     # S4: children's products
@@ -106,6 +146,14 @@ class SemanticRerankerV2(SemanticReranker):
             else 0.0
         )
 
+        # S3-lite: boost explicit pattern matches, only inside a detected
+        # category so S1's type tiers bound the reordering.
+        pattern_requirements = (
+            extract_patterns(query)
+            if self.attribute_boost and query_category
+            else []
+        )
+
         scored = []
 
         for position, item in enumerate(results):
@@ -141,6 +189,11 @@ class SemanticRerankerV2(SemanticReranker):
 
             if kids_penalty and self._is_kids_product(product):
                 final_score -= kids_penalty
+
+            if pattern_requirements:
+                final_score += PATTERN_BOOST * self._pattern_match_fraction(
+                    product, pattern_requirements
+                )
 
             scored.append(
                 {

@@ -19,17 +19,28 @@ recommendation_engine = RecommendationEngine()
 reranker = SemanticReranker()
 reranker_v2 = SemanticRerankerV2()
 reranker_v2_kids = SemanticRerankerV2(kids_penalty=KIDS_PENALTY)
+reranker_v2_attr = SemanticRerankerV2(attribute_boost=True)
+reranker_v2_kids_attr = SemanticRerankerV2(kids_penalty=KIDS_PENALTY, attribute_boost=True)
+
+# (SEARCH_V2_KIDS_DOWNRANK, SEARCH_V2_ATTRIBUTE_BOOST) -> v2 instance
+_V2_RERANKERS = {
+    (False, False): reranker_v2,
+    (True, False): reranker_v2_kids,
+    (False, True): reranker_v2_attr,
+    (True, True): reranker_v2_kids_attr,
+}
 
 
 def active_reranker():
     """v1 unless SEARCH_RERANK_VERSION=v2 (Phase 1, S1 + S2).
 
-    With v2, SEARCH_V2_KIDS_DOWNRANK=true also enables S4.
+    With v2, SEARCH_V2_KIDS_DOWNRANK=true also enables S4 and
+    SEARCH_V2_ATTRIBUTE_BOOST=true enables S3-lite, independently.
     """
     if settings.search_rerank_version == "v2":
-        if settings.search_v2_kids_downrank:
-            return reranker_v2_kids
-        return reranker_v2
+        return _V2_RERANKERS[
+            (bool(settings.search_v2_kids_downrank), bool(settings.search_v2_attribute_boost))
+        ]
     return reranker
 
 

@@ -250,6 +250,35 @@ AMBIGUOUS_AUDIENCE_TERMS = [
     "son", "sons", "family", "matching",
 ]
 
+# ---------------------------------------------------------------------------
+# Attributes (S3-lite). Pattern -> synonyms. A query naming any synonym
+# requests that pattern; a product matches if its name or description
+# contains any synonym of the requested pattern.
+# ---------------------------------------------------------------------------
+
+PATTERN_SYNONYMS = {
+    "floral": ["floral", "flower", "flowers"],
+    "stripe": ["stripe", "stripes", "striped"],
+    "check": ["check", "checks", "checked", "plaid", "tartan", "gingham"],
+    "leopard": ["leopard", "animal print"],
+    "zebra": ["zebra", "animal print"],
+    "snake": ["snake", "snake print"],
+    "polka dot": ["polka", "dot", "dots", "spot", "spots"],
+    "lace": ["lace"],  # word boundaries exclude "lace-up"
+    "print": ["print", "printed"],
+    "graphic": ["graphic"],
+}
+
+# "check" followed by one of these is the verb, not the pattern.
+CHECK_VERB_FOLLOWERS = [
+    "out", "if", "whether", "this", "these", "that", "those", "the", "my",
+    "for", "price", "prices", "availability", "stock", "size", "sizes",
+]
+
+PATTERN_BOOST = 0.25
+
+COLOUR_SYNONYMS = {"navy": "dark blue"}
+
 # Adult phrases that contain a kids word; removed before the checks above.
 ADULT_PHRASES = [
     "baby pink", "baby blue", "girls' night", "girls night", "girl's night",
