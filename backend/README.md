@@ -73,11 +73,18 @@ pytest -q tests test_auth.py test_copilot_validation.py \
 
 These use in-memory fakes or mocks: no MongoDB, network or index needed.
 
-> ⚠️ Do not run a bare `pytest` yet. Some legacy root scripts named `test_*.py`
-> (for example `test_budget.py`) connect to the database when collected. They
-> will be moved to `scripts/` in Phase 1 WS-E. (`test_config.py` used to print
-> the MongoDB URL and JWT secret; it is now a plain assertion test that prints
-> nothing.)
+> The legacy manual scripts that used to be named `test_*.py` (`test_budget.py`
+> was collected as a test and called MongoDB and the exchange-rate API) now live
+> in `scripts/` with non-`test_` names, so pytest no longer collects them
+> (Phase 1 WS-E, step E1). `manual_budget_search` and
+> `manual_multicurrency_budget` use MongoDB and the exchange-rate API,
+> `manual_exchange_rates` uses the exchange-rate API, and
+> `manual_intent_detection` uses neither. Run one deliberately from `backend/`
+> with `python -m scripts.<name>`, for example
+> `python -m scripts.manual_intent_detection`. A bare `pytest` run from
+> `backend/` now collects only the tests above plus `test_config.py`.
+> (`test_config.py` used to print the MongoDB URL and JWT secret; it is now a
+> plain assertion test that prints nothing.)
 
 ### 7. Swagger UI
 
