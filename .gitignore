@@ -56,6 +56,11 @@ backend/product_ids.pkl
 # Generated semantic-search artefacts (large; never commit)
 backend/hm_products.index
 backend/hm_product_ids.pkl
+# Temporary and backup copies written by create_hm_embeddings.py
+backend/hm_products.index.tmp
+backend/hm_product_ids.pkl.tmp
+backend/hm_products.index.bak
+backend/hm_product_ids.pkl.bak
 
 # Python cache
 .pytest_cache/

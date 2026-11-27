@@ -44,8 +44,15 @@ artefact and is not in git (`hm_products.index`, `hm_product_ids.pkl`).
 If the catalog is already in MongoDB, build the index only (reads the DB, writes local files):
 
 ```bash
-python create_hm_embeddings.py
+python create_hm_embeddings.py           # dry run: reports the plan and the current artefacts
+python create_hm_embeddings.py --apply   # first build
+python create_hm_embeddings.py --apply --i-understand-this-overwrites-index   # rebuild
 ```
+
+The artefacts are written next to `create_hm_embeddings.py` (where `search.py`
+loads them), first as `*.tmp` files that are validated before replacing the live
+pair; the previous pair is kept as `*.bak`. `APP_ENV=production` is refused
+unless you also pass `--allow-production`.
 
 ### 4. Start the API server
 
