@@ -55,6 +55,7 @@ All of these are query-time changes. **No catalogue or FAISS writes, and no re-e
 | S6 | Score calibration: normalise the weights so they sum to 1. Ranking order is mathematically unchanged; only the displayed score values change. Report `relevance` on a 0–1 scale, and use it for S5's threshold. | Calibration | `services/semantic_reranker.py` |
 | S7 | Explanations only state attributes that actually matched; nothing generic like "matches your search" for weak results | Misleading reasons | `services/semantic_reranker.py` |
 | S8 | Budget regex accepts ₹ / Rs / INR. It only has an effect once prices exist (Phase 2). | Future | `services/query_parser.py` |
+| S10 | **New finding, for approval (not part of the approved S1–S7).** Queries containing best/recommend/suggest/popular take the `recommendation` path. `RecommendationEngine.recommend()` reads `product["name"]` from the search-result wrapper, but the name is in `item["product"]["name"]`, so **every item is skipped and 0 products are returned**. Found by reading the code; the eval's `recommendation` group (r1–r6) measures it. Proposed fix: send this intent through the v2 reranker (v2 only). | Recommendation queries | `routes/semantic_search.py` (v2 branch only) |
 | S9 | The frontend shows `out_of_catalog` and empty results honestly ("We don't carry gaming laptops") | Q5 UX | `src/routes/search.tsx`, `src/lib/api/services.ts` (WS-D) |
 
 **Not in Phase 1** (Phase 3): hybrid BM25 retrieval, filters pushed into FAISS, a cross-encoder reranker, embedding-model changes, re-indexing, LLM query understanding.
@@ -76,8 +77,34 @@ All of these are query-time changes. **No catalogue or FAISS writes, and no re-e
 
 ---
 
-## 5. Next steps (in order)
+## 5. Exact implementation plan for S1–S7 (approved; starts only after the v1 baseline report)
 
-1. **WS-F automated harness:** `backend/eval/queries.jsonl` (graded labels from catalogue attributes plus a hand-reviewed subset, including Q1–Q5 and out-of-catalogue queries) and `backend/eval/run_eval.py`. It runs read-only against your local API or DB and writes `reports/baseline_v1.{json,md}`.
+**Query-time only: confirmed.** Every change below runs inside the request after FAISS retrieval, or in configuration. None of them:
+- writes to MongoDB;
+- reads or writes any collection other than the existing `catalog_products` lookup in `search.py`, which is unchanged;
+- modifies, rebuilds or re-embeds `hm_products.index` / `hm_product_ids.pkl`;
+- touches the import or embedding scripts.
+
+The **v1 code path stays byte-for-byte as it is**: v2 lives in new modules.
+
+| File | Change | New / modified |
+|---|---|---|
+| `backend/config.py` | `search_rerank_version: "v1" \| "v2"` (env `SEARCH_RERANK_VERSION`, default **`v1`**; any other value fails at startup) | modified (additive field) |
+| `backend/services/catalog_vocabulary.py` | Static vocabulary: product type → category (S1), synonyms, pattern and comfort terms (S3), audience words (S4), unsupported-domain terms (S5). Plain constants taken from the catalog's own type values. | **new** |
+| `backend/services/query_parser.py` | Add `extract_v2()` (S1, S3, S4). The existing `extract()` is untouched. | modified (additive method) |
+| `backend/services/semantic_reranker_v2.py` | `SemanticRerankerV2(SemanticReranker)`: category inference covering every product type (S1); diversity cap ≥ 2 with backfill to `top_k` (S2); soft attribute boosts (S3); children's downranking for non-kids queries (S4); normalised weights and a 0–1 `relevance` (S6); explanations only for attributes that matched (S7) | **new** (v1 class unchanged) |
+| `backend/services/catalog_scope.py` | Out-of-catalogue detection (S5): unsupported-domain terms + a catalogue-vocabulary check + a minimum-relevance threshold, **calibrated from the v1 report** | **new** |
+| `backend/routes/semantic_search.py` | Pick the reranker from the setting. v2 adds response fields `rerank_version`, `out_of_catalog`, `message`. The v1 response is unchanged. | modified (branch) |
+| `backend/.env.example`, `backend/README.md`, `eval/README.md` | Document the flag | docs |
+| `backend/tests/test_query_parser_v2.py` | S1, S3, S4 extraction, including "bikini top" → swimwear and "dress" → dresses | **new** |
+| `backend/tests/test_reranker_v2.py` | Fixture products reproduce Q1–Q4 (Q2 must return 5 results, ≥4 dresses, no children's items); backfill; scores in 0–1; reasons only for matched attributes | **new** |
+| `backend/tests/test_catalog_scope.py` | Q5 and the 23 out-of-catalogue queries are rejected; in-catalogue look-alikes (laptop bag, phone case, watch, side table) are not | **new** |
+| `backend/tests/test_semantic_search_versions.py` | Default is v1, with the response shape unchanged; v2 only when the flag is set; an invalid flag fails at startup | **new** |
+
+**Option to measure, not assumed:** v2 may ask FAISS for more candidates than 100 (for example 300) so the category filter has enough to backfill. This is still a read-only query-time change. It goes in only if the eval shows a gain within the latency budget.
+
+## 6. Next steps (in order)
+
+1. ✅ **WS-F automated harness built** (`backend/eval/`, 174 queries, 21 passing harness tests). ⏳ **The v1 baseline run needs your machine:** `python -m eval.run_eval --label v1` (see `eval/README.md`).
 2. With your approval, implement S1–S7 behind `SEARCH_RERANK_VERSION=v2` (default `v1`).
 3. You run the harness locally against the real catalogue for v1 and v2 → compare the reports → you decide whether to switch the default.
