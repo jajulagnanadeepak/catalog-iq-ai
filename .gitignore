@@ -52,6 +52,9 @@ backend/.env
 # AI generated files
 backend/products.index
 backend/product_ids.pkl
+# Generated semantic-search artefacts (large; never commit)
+backend/hm_products.index
+backend/hm_product_ids.pkl
 
 # Python cache
 .pytest_cache/
