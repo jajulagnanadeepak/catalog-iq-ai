@@ -26,7 +26,7 @@ Branch: `feat/p1-backend-foundation` (from `main` @ `5d7ba72`). Phase 2 does not
 
 Workstreams run in this order: WS-A, then WS-B and WS-E in parallel, then WS-C, WS-D and WS-F. Each one becomes a PR.
 
-### WS-A — Reproducible backend and startup ✅ code complete, awaiting your local test run
+### WS-A — Reproducible backend and startup ✅ code complete and tested locally (Python 3.11.9); ML versions pinned in `c10ee67`
 
 | Task | Files |
 |---|---|
@@ -86,9 +86,23 @@ Admin accounts are created only by a CLI script that **you** run (`python -m scr
 | GitHub Actions: ruff, pytest (3.11), frontend lint + typecheck + build, gitleaks, pip-audit, npm/bun audit | `.github/workflows/ci.yml`, `.gitleaks.toml`, `backend/ruff.toml` |
 | `articles.csv` (in git) stays as it is for now; moving it to LFS is optional and needs your approval | — |
 
-### WS-F — Search quality baseline (measures only; changes no search behaviour)
+### WS-F — Search quality baseline and v2 improvements ✅ implemented behind flags (all default off); not yet committed
 
-**Baseline v0 (manual, by owner, 2026-11-27) recorded with root-cause analysis and the proposed S1–S9 improvements in [`backend/eval/BASELINE.md`](backend/eval/BASELINE.md).** The S-changes are query-time only, behind `SEARCH_RERANK_VERSION=v2` (default `v1`), and wait for your approval.
+**Baseline v0 (manual, by owner, 2026-11-27) recorded with root-cause analysis and the proposed improvements in [`backend/eval/BASELINE.md`](backend/eval/BASELINE.md).** The automated v1 baseline was run, and S1, S2, a trench-coat vocabulary correction, S4, S3-lite and the S5 hard tier were implemented as query-time changes behind feature flags, each approved and evaluated separately. Results, flags and known issues: [`BASELINE.md` §7](backend/eval/BASELINE.md).
+
+| Metric (174 queries) | v1 (default) | v2 with all flags on |
+|---|---|---|
+| NDCG@10 | 0.6217 | 0.8743 |
+| Precision@5 | 0.6493 | 0.8760 |
+| Fill rate | 0.769 | 0.960 |
+| Zero-result rate | 0.073 | 0.040 |
+| Kids-query NDCG | 0.5575 | 0.9456 |
+| Out-of-catalogue correct | 0.0 | 1.0 (24/24) |
+| Evaluation targets | 3/28 | 28/28 |
+
+S5 changed 0 of the 150 in-catalogue results; held-out out-of-catalogue recall is 22/24 (92%) with 0/36 false positives. These are single-client evaluation results on a fixed query set, not production measurements.
+
+Flags (all default off, so the API behaves as v1): `SEARCH_RERANK_VERSION=v1|v2`, `SEARCH_V2_KIDS_DOWNRANK` (S4), `SEARCH_V2_ATTRIBUTE_BOOST` (S3-lite), `SEARCH_V2_OUT_OF_CATALOG` (S5).
 
 | Task | Files |
 |---|---|
@@ -102,11 +116,11 @@ Admin accounts are created only by a CLI script that **you** run (`python -m scr
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| **I can't run tests in this session.** Packages can't be installed (network off), so nothing can execute. | Certain | You run the §3 commands and paste the output. I mark each workstream "awaiting verification" until then. Alternatively, enable package installs and start a new chat. |
-| **I can't push.** The repo is attached read-only. | Certain | I deliver a git bundle (§4) that you fetch locally and push. Or grant push access and I open PRs. |
+| ~~I can't run tests in this session.~~ | Resolved | Tests now run locally in `backend/.venv-p1` (Python 3.11.9) |
+| ~~I can't push.~~ | Resolved | The repository is local; commits and pushes happen only on your instruction |
 | Your `.env` sets `ALLOWED_ORIGINS` without `http(s)://`, or `APP_ENV` is non-dev with a weak secret, so the API **now refuses to start** | Low | Intended: the error message says exactly what to fix, and secrets are never printed |
 | Some pinned versions (for example `cryptography==50.0.0`) may not resolve on Python 3.11 | Unknown | The install step in §3 confirms it. If anything fails I'll adjust only that pin |
-| passlib 1.7.4 + bcrypt 5.0.0 is likely incompatible, so `test_auth.py` may fail at hashing | Medium | That's an existing defect, now surfaced. WS-B fixes it with existing hashes kept valid |
+| passlib 1.7.4 + bcrypt 5.0.0 is incompatible: **confirmed**, 4 tests in `test_auth.py` fail at hashing, and signup/login fail in a fresh environment | Confirmed | Existing defect, not fixed yet. WS-B fixes it with existing hashes kept valid |
 | `DATABASE_NAME` case mismatch (code `CatalogIQ` vs old example `catalogiq`) | Medium | Defaults unchanged; `/health/ready` now shows the catalogue count so a wrong name is obvious |
 | `import_hm_catalog.py` wipes `catalog_products` if someone runs it | Existing | Warned in the README now; guarded in WS-E |
 | `/health/ready` reveals counts and error text publicly | Low | Acceptable for now; restricted at the edge in Phase 5 |
@@ -164,9 +178,9 @@ The bundle `catalogiq-phase1.bundle` contains branch `feat/p1-backend-foundation
 
 ## 5. Phase 1 acceptance criteria (exit gate)
 
-- [ ] Clean Python 3.11 install from `requirements.txt` succeeds; ML versions pinned *(WS-A)*
-- [ ] API starts without the index; `/health/ready` 503 with a reason; with the index, 200 and semantic results unchanged *(WS-A)*
-- [ ] Production config with a weak or placeholder secret, or a `*` origin, refuses to start, without printing secrets *(WS-A)*
+- [x] Clean Python 3.11 install from `requirements.txt` succeeds; ML versions pinned *(WS-A; `c10ee67`)*
+- [x] API starts without the index; `/health/ready` 503 with a reason; with the index, 200 and semantic results unchanged *(WS-A; 503 path in `tests/test_health.py`, 200 observed locally, v1 eval reproduced with 0 differences)*
+- [x] Production config with a weak or placeholder secret, or a `*` origin, refuses to start, without printing secrets *(WS-A; `tests/test_settings.py`)*
 - [ ] Deactivated user's token rejected; customer → 403 on admin route; brute force → 429; `purchase` event rejected; oversized bodies rejected *(WS-B)*
 - [ ] Existing users can still log in with their existing passwords *(WS-B)*
 - [ ] Data-profile report reviewed by you; migration dry-run report reviewed; on staging, `catalog_items` = 105,542 + 12, source checksum unchanged, re-run is a no-op *(WS-C)*
@@ -175,5 +189,29 @@ The bundle `catalogiq-phase1.bundle` contains branch `feat/p1-backend-foundation
 - [ ] Backend down → no mock data shown (unless `VITE_USE_MOCKS=true`, with badge); unknown product → "not found"; no hard-coded business statistics *(WS-D)*
 - [ ] CI green on the PR; fails on a planted fake secret and a failing test *(WS-E)*
 - [ ] Bare `pytest` is safe: no DB or network access during collection *(WS-E)*
-- [ ] Search baseline report committed and reproducible *(WS-F)*
+- [ ] Search baseline report committed and reproducible *(WS-F; reports generated and reproduced with 0 differences, commit pending)*
 - [ ] Smoke test for every existing feature passes; git history intact *(all)*
+
+## 6. Status (2026-11-27)
+
+| Workstream | Status |
+|---|---|
+| WS-A | Done and tested |
+| WS-F | Done behind flags (all default off); uncommitted; results in `backend/eval/BASELINE.md` §7 |
+| WS-B, WS-C, WS-D, WS-E | Not started |
+
+`backend/test_config.py` no longer prints the MongoDB URL or JWT secret when collected; it is now an assertion-only test. Bare `pytest` is still not safe because other legacy root scripts touch the database (WS-E).
+
+**Known issues carried forward** (details in `backend/eval/BASELINE.md` §7.5):
+
+- The bcrypt/passlib incompatibility breaks signup/login in a fresh environment (WS-B).
+- The recommendation intent (best/recommend/suggest/popular) returns 0 results (S10).
+- Copilot still uses v1 search.
+- The inherited gender-inference substring defect.
+- Retrieval gaps that reranking cannot fix.
+- The hand-written S5 vocabulary.
+- Evaluation limitations (small kids and attribute samples, labels share vocabulary with S1/S3, held-out sets not independent, single-client latency).
+
+**Deferred:** S5b (distance-based low confidence), S6–S8, S9 (frontend display of `out_of_catalog`), S10 (recommendation fix), and Phase 3 retrieval work.
+
+Nothing in Phase 1 is production-ready or enabled by default.

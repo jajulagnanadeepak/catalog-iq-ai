@@ -74,9 +74,10 @@ pytest -q tests test_auth.py test_copilot_validation.py \
 These use in-memory fakes or mocks: no MongoDB, network or index needed.
 
 > ⚠️ Do not run a bare `pytest` yet. Some legacy root scripts named `test_*.py`
-> (for example `test_budget.py`, `test_config.py`) connect to the database or
-> print configuration when collected. They will be moved to `scripts/` in
-> Phase 1 WS-E.
+> (for example `test_budget.py`) connect to the database when collected. They
+> will be moved to `scripts/` in Phase 1 WS-E. (`test_config.py` used to print
+> the MongoDB URL and JWT secret; it is now a plain assertion test that prints
+> nothing.)
 
 ### 7. Swagger UI
 

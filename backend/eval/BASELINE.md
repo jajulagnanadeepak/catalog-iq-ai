@@ -1,6 +1,6 @@
 # Phase 1 — Search-Quality Baseline (WS-F)
 
-**Status:** Baseline v0 is recorded: a manual test by the project owner on 2026-11-27, run locally against the real 105,542-product catalogue and the existing FAISS index. The automated baseline (v1) is next (§5).
+**Status (updated 2026-11-27):** Baseline v0 (manual, §1) and the automated v1 baseline are recorded. S1, S2, a trench-coat vocabulary correction, S4, S3-lite and the S5 hard tier are implemented behind feature flags that all default to off, and are evaluated in §7. S6–S10 are not implemented. None of this has been deployed or enabled by default; it is not production-ready.
 **Code under test:** `feat/p1-backend-foundation` (WS-A). WS-A does not change search behaviour, so this is also the baseline for `main@5d7ba72`.
 **Endpoint:** `POST /api/semantic-search` (FAISS retrieves 100 candidates → `SemanticReranker`).
 **Constraint:** the catalogue and the FAISS index are not modified, deleted or rebuilt. Every proposed change is query-time code only, behind a flag, and measured against this baseline.
@@ -41,7 +41,9 @@
 
 ---
 
-## 3. Proposed improvements (for approval; not implemented)
+## 3. Proposed improvements
+
+> **Implementation status:** S1, S2 and S4 are implemented as proposed, except that S4 identifies children's products by `section` (100% equivalent to `index_group_name`, see §7) instead of waiting for WS-C. S3 is implemented in a reduced form ("S3-lite": pattern boost and `navy` only). S5 is implemented as a vocabulary-based hard tier without a relevance threshold. S6, S7, S8, S9 and S10 are **not** implemented. Each implemented change has its own flag instead of a single `v2` switch. Details and measurements are in §7.
 
 All of these are query-time changes. **No catalogue or FAISS writes, and no re-embedding.** They live behind the setting `SEARCH_RERANK_VERSION` (`v1` is the default and the current behaviour; `v2` is the new one). `v1` stays the default until the automated eval shows `v2` has no regressions and you approve the switch.
 
@@ -77,7 +79,9 @@ All of these are query-time changes. **No catalogue or FAISS writes, and no re-e
 
 ---
 
-## 5. Exact implementation plan for S1–S7 (approved; starts only after the v1 baseline report)
+## 5. Exact implementation plan for S1–S7 (original plan)
+
+> This was the plan before implementation. What was actually built, and where it differs, is in §7.
 
 **Query-time only: confirmed.** Every change below runs inside the request after FAISS retrieval, or in configuration. None of them:
 - writes to MongoDB;
@@ -103,8 +107,90 @@ The **v1 code path stays byte-for-byte as it is**: v2 lives in new modules.
 
 **Option to measure, not assumed:** v2 may ask FAISS for more candidates than 100 (for example 300) so the category filter has enough to backfill. This is still a read-only query-time change. It goes in only if the eval shows a gain within the latency budget.
 
-## 6. Next steps (in order)
+## 6. Next steps
 
-1. ✅ **WS-F automated harness built** (`backend/eval/`, 174 queries, 21 passing harness tests). ⏳ **The v1 baseline run needs your machine:** `python -m eval.run_eval --label v1` (see `eval/README.md`).
-2. With your approval, implement S1–S7 behind `SEARCH_RERANK_VERSION=v2` (default `v1`).
-3. You run the harness locally against the real catalogue for v1 and v2 → compare the reports → you decide whether to switch the default.
+1. ✅ WS-F automated harness built (`backend/eval/`, 174 queries).
+2. ✅ v1 baseline run (`eval/reports/v1.*`). Run it against `http://127.0.0.1:8000`: on Windows, `localhost` first tries IPv6 and adds about 2 s to every request.
+3. ✅ S1, S2, trench correction, S4, S3-lite and S5 hard tier implemented behind flags and evaluated (§7).
+4. ⏳ Decide whether and when to enable the v2 flags outside development. This has not been decided, and the known issues in §7.5 should be considered first.
+5. Deferred: S5b, S6–S10, and the Phase 3 retrieval work (§7.6).
+
+## 7. Phase 1 results
+
+All runs use the same 174-query set (`queries.jsonl`, sha256 `444f403e974d`), the real 105,542-product catalogue and the unchanged FAISS index (`hm_products.index`). The catalogue, MongoDB data, index and embeddings were not modified. Reports are in `eval/reports/`. The reports' `git_commit` field shows `c10ee67` for all runs because the S1–S5 code was not yet committed when they ran.
+
+### 7.1 Metrics by stage
+
+Each stage adds to the one before. NDCG, P@5 and fill rate are over in-catalogue queries. "Strong" is the mean NDCG@10 of the 70 queries with v1 NDCG@10 ≥ 0.8.
+
+| Report | Configuration | NDCG@10 | P@5 | Fill rate | Zero-result rate | Children's items in non-kids top 5 | Kids-query NDCG | Strong | OOC correct | Targets |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `v1` | v1 (current default) | 0.6217 | 0.6493 | 0.769 | 0.073 | 0.068 | 0.5575 | 0.9411 | 0.0 | 3/28 |
+| `v2` | S1 + S2 | 0.8444 | 0.8333 | 0.960 | 0.040 | 0.057 | 0.9456 | 0.9462 | 0.0 | 3/28 |
+| `v2-trench` | + trench correction | 0.8454 | 0.8360 | 0.960 | 0.040 | 0.055 | 0.9456 | 0.9483 | 0.0 | 3/28 |
+| `v2-s4` | + S4 | 0.8714 | 0.8733 | 0.960 | 0.040 | 0.012 | 0.9456 | 0.9692 | 0.0 | 3/28 |
+| `v2-s3` | + S3-lite | 0.8743 | 0.8760 | 0.960 | 0.040 | 0.012 | 0.9456 | 0.9692 | 0.0 | 4/28 |
+| **`v2-s5`** | **+ S5 hard tier (all flags on)** | **0.8743** | **0.8760** | **0.960** | **0.040** | **0.012** | **0.9456** | **0.9692** | **1.0 (24/24)** | **28/28** |
+
+Against v1, 95 of 150 in-catalogue queries improved and 1 is worse (p10 "beige trench coat", 0.8132 → 0.7979, from S4). S5 changed 0 of the 150 in-catalogue results. On a separate held-out set written for the S5 investigation, the classifier caught 22/24 unavailable products (92%) and flagged 0 of 36 in-catalogue look-alikes ("phone case", "laptop sleeve", "side table", …).
+
+Each flag was verified to be isolated: with the newest flag off, a full eval run reproduced the previous stage with 0 per-query differences, and v1 (default settings) reproduced `v1.json` with 0 differences after every stage.
+
+Latency: end-to-end p95 in single-client eval runs varied between about 105 and 360 ms for identical code, so it is dominated by machine load. Controlled, interleaved reranking-only benchmarks: S4 adds no measurable cost, S3-lite adds +4.2% at p95 (+0.5 ms), the S5 classifier costs about 0.15 ms at p95, and S5 skips FAISS for out-of-catalogue queries (median about 8 ms instead of about 215 ms). No load test has been done.
+
+### 7.2 What was built
+
+| Change | Implementation | Differences from the plan in §3/§5 |
+|---|---|---|
+| S1 | `services/catalog_vocabulary.py`: all 131 catalogue product types mapped to categories (product type first, then product group; section text never overrides). `services/query_parser_v2.py`: longest phrase / right-most head noun ("bikini top" → swimwear). Specific types rank first, then the rest of the broad category backfills. | — |
+| S2 | `SemanticRerankerV2._apply_diversity_v2`: cap `max(2, int(top_k × 0.35))`, then backfill from skipped candidates in score order. | — |
+| Trench correction | "trench" / "trench coat" match Coat **and** Jacket (the catalogue types 75 trench items as Jacket, 49 as Coat). | Added after the S1 evaluation |
+| S4 | Soft −0.10 score penalty for children's products when the query does not mention children or an ambiguous audience ("teen", "daughter", …). Children's products are identified by 13 `section` values that hold exactly the 34,711 "Baby/Children" articles. Nothing is removed. | Uses `section` instead of `index_group_name`/WS-C |
+| S3-lite | +0.25 × (share of requested patterns found in name/description) when the query names a pattern **and** S1 detects a category; `navy` → `dark blue` in colour matching. No penalty for non-matching products. | Material, full colour normalisation and occasion boosts were simulated and rejected (no meaningful gain or regressions) |
+| S5 hard tier | `services/catalog_scope.py`: a query is out of catalogue only if S1 finds no category **and** no catalogue product-type or accessory phrase is present **and** an explicit unsupported-domain phrase is present (electronics, appliances, furniture, food/health, auto/tools, sport/music). Checked before FAISS; such queries return `products: []`, `out_of_catalog: true`, `ooc_reason: "unsupported_domain:<domain>"`. | No relevance threshold (S5b deferred); ambiguous words only as full phrases ("computer mouse", "cricket bat", "garden hose") |
+
+### 7.3 Feature flags
+
+All default to off, so the API behaves exactly as before (v1) unless they are set.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SEARCH_RERANK_VERSION` | `v1` | `v1` or `v2` (S1 + S2 + trench correction). Any other value fails at startup |
+| `SEARCH_V2_KIDS_DOWNRANK` | `false` | S4. v2 only |
+| `SEARCH_V2_ATTRIBUTE_BOOST` | `false` | S3-lite. v2 only |
+| `SEARCH_V2_OUT_OF_CATALOG` | `false` | S5 hard tier. v2 only |
+
+The S3, S4 and S5 flags are independent of each other. v2 responses add `rerank_version: "v2"`; S5 responses for out-of-catalogue queries add `out_of_catalog` and `ooc_reason`. Normal in-catalogue responses get no other new fields.
+
+### 7.4 Tests
+
+`pytest tests` (no database, network or index needed): 380 passed. The existing safe tests listed in `backend/README.md`: 37 passed and 4 failed. The 4 failures are the known bcrypt/passlib issue in §7.5, not caused by this work.
+
+### 7.5 Known issues and limitations
+
+| Issue | Severity | Notes |
+|---|---|---|
+| Recommendation intent returns 0 results | High | Queries with best/recommend/suggest/popular take `RecommendationEngine.recommend()`, which reads the name from the wrong level of the search result (proposal S10). Affects 6 eval queries; pre-existing |
+| bcrypt 5.0.0 / passlib 1.7.4 incompatibility | High | Signup and login fail in a fresh environment; 4 tests in `test_auth.py`. Pre-existing; planned for WS-B |
+| Copilot still uses v1 search | Medium | `ai/copilot.py` creates the v1 `SemanticReranker` |
+| Gender inference substring defect | Medium | Inherited `_infer_gender` matches "men" inside "garment", so 79% of children's products are classed as men's. A simulated fix showed no quality gain; not fixed |
+| Retrieval gaps | Medium | Floral blouses, leopard dresses and polka-dot dresses exist in the catalogue but are not among the 100 FAISS candidates (p4, p6, p7); "black formal shoes for office" (o1) returns sneakers; no comfort data (b4). Reranking cannot fix these (Phase 3) |
+| Multi-colour queries are not deterministic across restarts | Medium | The inherited colour list is a Python `set` |
+| S5 vocabulary is hand-written | Low | Unlisted products (e.g. kitchen knife sets, strollers) get normal results; some single words ("car", "phone", "bed") are listed; catalogue type names can protect real OOC queries ("smart watch"). All of these fail safe (normal results) |
+| p10 below v1 | Low | −0.015 NDCG@10, from S4 |
+| Eval tooling | Low | `compare.py` crashes on the Windows console unless `PYTHONIOENCODING=utf-8`; report `git_commit` does not flag uncommitted code |
+
+### 7.6 Evaluation limitations
+
+- The eval set has only 6 kids queries, 18 attribute queries and no ambiguous-audience queries.
+- Labels come from the same catalogue fields as the S1 and S3 vocabularies, so gains on generated queries are partly expected by construction.
+- The S4 and S5 held-out query sets were written during the investigations, not by an independent party; real-world recall is likely to be lower.
+- All latency figures are single-client.
+
+### 7.7 Deferred
+
+- **S5b**: low-confidence flag based on retrieval distance (margin too thin; index-specific).
+- **S6–S8**: score normalisation, explanations only for matched attributes, rupee budgets.
+- **S9**: showing `out_of_catalog` and empty results in the frontend.
+- **S10**: the recommendation-path fix.
+- **Phase 3**: retrieval improvements (hybrid keyword + vector retrieval, larger candidate pools, re-ranking models).
