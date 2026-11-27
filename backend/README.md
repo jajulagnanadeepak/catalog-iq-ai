@@ -33,10 +33,13 @@ The H&M catalog (105,542 articles, **demo data only**) lives in the
 `catalog_products` collection. The semantic search index is a generated
 artefact and is not in git (`hm_products.index`, `hm_product_ids.pkl`).
 
-> ⚠️ `python -m database.import_hm_catalog` **deletes every document in
-> `catalog_products`** and re-imports `articles.csv`. Do **not** run it against
-> a database that already holds the catalog. A guarded, dry-run-first version
-> is planned in Phase 1 (WS-E).
+> ⚠️ `python -m database.import_hm_catalog` is a **dry run** by default: it
+> validates `articles.csv` and reports the plan without changing anything.
+> `--apply` imports into an empty `catalog_products`. If the collection already
+> holds documents, a real run **deletes every one of them** and re-imports the
+> CSV; that needs `--apply --i-understand-this-replaces-catalog` plus typing
+> `yes` at the prompt. `APP_ENV=production` is refused unless you also pass
+> `--allow-production`. Do **not** replace a catalog you still need.
 
 If the catalog is already in MongoDB, build the index only (reads the DB, writes local files):
 
