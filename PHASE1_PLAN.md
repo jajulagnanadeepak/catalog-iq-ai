@@ -86,7 +86,7 @@ Admin accounts are created only by a CLI script that **you** run (`python -m scr
 | GitHub Actions: ruff, pytest (3.11), frontend lint + typecheck + build, gitleaks, pip-audit, npm/bun audit | `.github/workflows/ci.yml`, `.gitleaks.toml`, `backend/ruff.toml` |
 | `articles.csv` (in git) stays as it is for now; moving it to LFS is optional and needs your approval | — |
 
-### WS-F — Search quality baseline and v2 improvements ✅ implemented behind flags (all default off); not yet committed
+### WS-F — Search quality baseline and v2 improvements ✅ implemented behind flags (all default off); merged into `main` via PR #1 (merge `2d52823`)
 
 **Baseline v0 (manual, by owner, 2026-11-27) recorded with root-cause analysis and the proposed improvements in [`backend/eval/BASELINE.md`](backend/eval/BASELINE.md).** The automated v1 baseline was run, and S1, S2, a trench-coat vocabulary correction, S4, S3-lite and the S5 hard tier were implemented as query-time changes behind feature flags, each approved and evaluated separately. Results, flags and known issues: [`BASELINE.md` §7](backend/eval/BASELINE.md).
 
@@ -120,7 +120,7 @@ Flags (all default off, so the API behaves as v1): `SEARCH_RERANK_VERSION=v1|v2`
 | ~~I can't push.~~ | Resolved | The repository is local; commits and pushes happen only on your instruction |
 | Your `.env` sets `ALLOWED_ORIGINS` without `http(s)://`, or `APP_ENV` is non-dev with a weak secret, so the API **now refuses to start** | Low | Intended: the error message says exactly what to fix, and secrets are never printed |
 | Some pinned versions (for example `cryptography==50.0.0`) may not resolve on Python 3.11 | Unknown | The install step in §3 confirms it. If anything fails I'll adjust only that pin |
-| passlib 1.7.4 + bcrypt 5.0.0 is incompatible: **confirmed**, 4 tests in `test_auth.py` fail at hashing, and signup/login fail in a fresh environment | Confirmed | Existing defect. **Fixed by WS-B on branch `fix/ws-b-password-hashing`, implemented and tested but not yet merged into `main`:** Passlib removed, `bcrypt==5.0.0` used directly, existing bcrypt hashes kept valid, new signup passwords limited to 72 UTF-8 bytes |
+| passlib 1.7.4 + bcrypt 5.0.0 is incompatible: **confirmed**, 4 tests in `test_auth.py` fail at hashing, and signup/login fail in a fresh environment | Confirmed | Existing defect. **Fixed by WS-B and merged into `main`** (fix `daa4f19`, PR #2; post-merge validation passed on `main` `cc902e0`): Passlib removed, `bcrypt==5.0.0` used directly, existing bcrypt hashes kept valid, new signup passwords limited to 72 UTF-8 bytes |
 | `DATABASE_NAME` case mismatch (code `CatalogIQ` vs old example `catalogiq`) | Medium | Defaults unchanged; `/health/ready` now shows the catalogue count so a wrong name is obvious |
 | `import_hm_catalog.py` wipes `catalog_products` if someone runs it | Existing | Warned in the README now; guarded in WS-E |
 | `/health/ready` reveals counts and error text publicly | Low | Acceptable for now; restricted at the edge in Phase 5 |
@@ -197,22 +197,25 @@ The bundle `catalogiq-phase1.bundle` contains branch `feat/p1-backend-foundation
 | Workstream | Status |
 |---|---|
 | WS-A | Done and tested |
-| WS-F | Done behind flags (all default off); uncommitted; results in `backend/eval/BASELINE.md` §7 |
-| WS-B | bcrypt/passlib fix implemented and tested on branch `fix/ws-b-password-hashing`, not yet merged into `main`; the rest of WS-B not started |
-| WS-C, WS-D, WS-E | Not started |
+| WS-F | Done behind flags (all default off); merged into `main` via PR #1 (merge `2d52823`; commits `c63d9a2`…`2cfc843`); results in `backend/eval/BASELINE.md` §7 |
+| WS-B | bcrypt/passlib fix implemented, merged into `main` (fix `daa4f19`, PR #2) and validated after merge; the rest of WS-B not started |
+| S10 (recommendation path, BASELINE.md §3) | Root cause fixed and merged into `main` (fix `252f1b2`, PR #3; branch `fix/ws-c-recommendation-results`). Recommendation quality not yet evaluated against the live backend |
+| WS-C, WS-D, WS-E | Not started (the `fix/ws-c-…` branch name above refers to the S10 fix, not the canonical-catalogue workstream) |
+
+Post-merge validation on `main` `cc902e0`: `pytest tests` 467 passed (no failures or skips), 58 auth/password tests and 38 recommendation-engine tests passed, and the v1 search files are byte-identical to `c10ee67`. All tests use mocks or in-memory fakes; no live backend or database was used.
 
 `backend/test_config.py` no longer prints the MongoDB URL or JWT secret when collected; it is now an assertion-only test. Bare `pytest` is still not safe because other legacy root scripts touch the database (WS-E).
 
 **Known issues carried forward** (details in `backend/eval/BASELINE.md` §7.5):
 
-- The bcrypt/passlib incompatibility breaks signup/login in a fresh environment on `main`. Fixed and tested on branch `fix/ws-b-password-hashing` (Passlib removed, bcrypt 5.0.0 kept, existing hashes supported, new passwords limited to 72 UTF-8 bytes); not yet merged (WS-B).
-- The recommendation intent (best/recommend/suggest/popular) returns 0 results (S10).
+- **Resolved, merged into `main`:** the bcrypt/passlib incompatibility that broke signup/login in a fresh environment (WS-B: Passlib removed, bcrypt 5.0.0 kept, existing hashes supported, new passwords limited to 72 UTF-8 bytes).
+- **Resolved, merged into `main`:** the recommendation intent (best/recommend/suggest/popular) returning 0 results (S10). Still open: its result quality has not been evaluated against the live backend/database (validated only with test fixtures and in-memory fakes), and results are not reranked.
 - Copilot still uses v1 search.
 - The inherited gender-inference substring defect.
 - Retrieval gaps that reranking cannot fix.
 - The hand-written S5 vocabulary.
 - Evaluation limitations (small kids and attribute samples, labels share vocabulary with S1/S3, held-out sets not independent, single-client latency).
 
-**Deferred:** S5b (distance-based low confidence), S6–S8, S9 (frontend display of `out_of_catalog`), S10 (recommendation fix), and Phase 3 retrieval work.
+**Deferred:** S5b (distance-based low confidence), S6–S8, S9 (frontend display of `out_of_catalog`), and Phase 3 retrieval work. (S10, the recommendation fix, was deferred here and has since been fixed and merged; its live quality evaluation is still pending.)
 
 Nothing in Phase 1 is production-ready or enabled by default.
