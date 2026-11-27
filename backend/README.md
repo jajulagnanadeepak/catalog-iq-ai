@@ -89,6 +89,26 @@ supported".
 > MongoDB URL and JWT secret; it is now a plain assertion test that prints
 > nothing.)
 
+#### Diagnostic scripts (`scripts/`)
+
+Read-only checks, moved out of the backend root in Phase 1 WS-E (step E2b).
+They write nothing, but most need your `.env` (MongoDB) or the network, and
+they are not part of the test suite. Run one deliberately from `backend/`:
+`python -m scripts.<name>` (for example `python -m scripts.check_hm_catalog`).
+
+| Script | Reads |
+|---|---|
+| `check_catalog` | MongoDB `products`: image fields of 15 products |
+| `check_catalogs` | MongoDB `products` and `Products`: counts and one sample each |
+| `check_hm_catalog` | MongoDB `catalog_products`: count and one sample |
+| `check_image_urls` | MongoDB `products`, then an HTTP GET of every image URL |
+| `check_search_relevance` | FAISS index + MongoDB `catalog_products`; loads the embedding model (may download it into the model cache) |
+| `check_trousers` | MongoDB `products` (via `ProductService`) |
+| `check_trousers_budget` | MongoDB `products` + the exchange-rate API (via `BudgetService`) |
+| `inspect_broken_products` | MongoDB `products`: products `p-005` and `p-001` |
+| `inspect_faiss_ids` | Legacy `products.index` and `product_ids.pkl` in `backend/` |
+| `verify_replacement_images` | HTTP GET of two hard-coded image URLs |
+
 ### 7. Swagger UI
 
 Open **http://localhost:8000/docs** in your browser.
