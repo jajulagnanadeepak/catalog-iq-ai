@@ -5,31 +5,43 @@ AI-powered commerce intelligence API.
 ## Quick Start
 
 ### 1. Prerequisites
-- Python 3.11+
+- **Python 3.11** (the version CI targets)
 - MongoDB Atlas cluster (or local MongoDB)
+- About 3 GB free RAM for the embedding model, FAISS index and (on first visual search) CLIP
 
 ### 2. Setup
 
 ```bash
 cd backend
 
-# Create and activate virtual environment
-python -m venv .venv
-.venv\Scripts\activate        # Windows
-# or: source .venv/bin/activate  # macOS/Linux
+# Create and activate a virtual environment
+python3.11 -m venv .venv
+source .venv/bin/activate          # macOS/Linux
+# .venv\Scripts\activate          # Windows
 
-# Install dependencies
-pip install -r requirements.txt
+pip install --upgrade pip
+pip install -r requirements.txt -r requirements-dev.txt
 
-# Create environment file
-copy .env.example .env
-# Edit .env — add your MONGODB_URL and change JWT_SECRET
+# Environment file
+cp .env.example .env               # Windows: copy .env.example .env
+# Edit .env: MONGODB_URL, DATABASE_NAME (exact, case-sensitive), JWT_SECRET
 ```
 
-### 3. Seed the database (first run only)
+### 3. Data and search index
+
+The H&M catalog (105,542 articles, **demo data only**) lives in the
+`catalog_products` collection. The semantic search index is a generated
+artefact and is not in git (`hm_products.index`, `hm_product_ids.pkl`).
+
+> ⚠️ `python -m database.import_hm_catalog` **deletes every document in
+> `catalog_products`** and re-imports `articles.csv`. Do **not** run it against
+> a database that already holds the catalog. A guarded, dry-run-first version
+> is planned in Phase 1 (WS-E).
+
+If the catalog is already in MongoDB, build the index only (reads the DB, writes local files):
 
 ```bash
-python -m database.seed
+python create_hm_embeddings.py
 ```
 
 ### 4. Start the API server
@@ -38,7 +50,36 @@ python -m database.seed
 uvicorn main:app --reload --port 8000
 ```
 
-### 5. Swagger UI
+The API starts even if the search index is missing; semantic search then
+returns `503` and readiness reports why.
+
+### 5. Health checks
+
+| Endpoint | Meaning |
+|---|---|
+| `GET /health` | Legacy liveness response (unchanged) |
+| `GET /health/live` | Process is up |
+| `GET /health/ready` | MongoDB reachable, `catalog_products` count, search index loaded. `503` if not ready |
+
+If `/health/ready` shows `catalog_products: 0`, `DATABASE_NAME` is almost certainly wrong.
+
+### 6. Tests
+
+```bash
+pytest -q tests test_auth.py test_copilot_validation.py \
+  test_intent_event_validation.py test_recommendation_filtering.py \
+  test_semantic_reranker_relevance.py
+```
+
+These use in-memory fakes or mocks: no MongoDB, network or index needed.
+
+> ⚠️ Do not run a bare `pytest` yet. Some legacy root scripts named `test_*.py`
+> (for example `test_budget.py`) connect to the database when collected. They
+> will be moved to `scripts/` in Phase 1 WS-E. (`test_config.py` used to print
+> the MongoDB URL and JWT secret; it is now a plain assertion test that prints
+> nothing.)
+
+### 7. Swagger UI
 
 Open **http://localhost:8000/docs** in your browser.
 
@@ -55,7 +96,7 @@ Open **http://localhost:8000/docs** in your browser.
 | `POST` | `/api/intent` | NLU intent classification |
 | `POST` | `/api/auth/signup` | Create account → JWT |
 | `POST` | `/api/auth/login` | Login → JWT |
-| `GET` | `/health` | Health check |
+| `GET` | `/health`, `/health/live`, `/health/ready` | Health probes |
 
 All routes are prefixed with `/api` to match the Vite dev proxy and frontend `requestWithFallback`.
 
@@ -101,8 +142,13 @@ backend/
 | Variable | Default | Description |
 |---|---|---|
 | `MONGODB_URL` | `mongodb://localhost:27017` | MongoDB Atlas connection string |
-| `DATABASE_NAME` | `catalogiq` | Database name |
-| `JWT_SECRET` | *(required)* | Secret key for JWT signing |
+| `DATABASE_NAME` | `CatalogIQ` | Database name (case-sensitive; must match Atlas exactly) |
+| `JWT_SECRET` | dev placeholder | ≥32 chars; required outside development |
 | `JWT_ALGORITHM` | `HS256` | JWT algorithm |
 | `JWT_EXPIRE_MINUTES` | `1440` | Token lifetime (24h) |
-| `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS allowed origins |
+| `APP_ENV` | `development` | `development`/`test` allow dev defaults; anything else enforces a strong `JWT_SECRET` |
+| `ALLOWED_ORIGINS` | localhost dev ports | Comma-separated CORS origins |
+| `SEARCH_RERANK_VERSION` | `v1` | Semantic-search reranker: `v1` (baseline) or `v2` (S1 category vocabulary + S2 diversity backfill). Responses in v2 mode include `"rerank_version": "v2"` |
+| `SEARCH_V2_KIDS_DOWNRANK` | `false` | v2 only (S4): children's products get a soft 0.10 score penalty for queries that aren't about children. Nothing is removed |
+| `SEARCH_V2_ATTRIBUTE_BOOST` | `false` | v2 only (S3-lite): +0.25 for products whose name/description matches a pattern the query names (floral, striped, check, …), only when a category is detected; `navy` matches Dark Blue |
+| `SEARCH_V2_OUT_OF_CATALOG` | `false` | v2 only (S5 hard tier): a query with no fashion category, no catalogue product-type/accessory phrase and an explicit unsupported-domain phrase (laptop, sofa, …) skips retrieval and returns `products: []`, `out_of_catalog: true`, `ooc_reason: "unsupported_domain:<domain>"` |
