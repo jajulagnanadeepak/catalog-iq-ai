@@ -1,9 +1,11 @@
 import asyncio
 import httpx
 
+# The seeded images for p-001 and p-005 (database/seed.py), the same URLs as
+# the frontend mock (src/lib/api/mock.ts).
 urls = {
-    "Image A": "https://plus.unsplash.com/premium_photo-1674719144570-0728faf14f96?q=80&w=687&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=NHwxMjA3fDA%3D",
-    "Image B": "https://plus.unsplash.com/premium_photo-1718913936342-eaafff98834b?q=80&w=1172&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=NHwxMjA3fDA%3D",
+    "p-001 Mercer Wool Overcoat": "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&w=800&q=80",
+    "p-005 Terry Polo Shirt": "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=800&q=80",
 }
 
 async def main():

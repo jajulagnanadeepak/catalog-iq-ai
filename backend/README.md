@@ -134,7 +134,7 @@ they are not part of the test suite. Run one deliberately from `backend/`:
 | `check_trousers_budget` | MongoDB `products` + the exchange-rate API (via `BudgetService`) |
 | `inspect_broken_products` | MongoDB `products`: products `p-005` and `p-001` |
 | `inspect_faiss_ids` | Legacy `products.index` and `product_ids.pkl` in `backend/` |
-| `verify_replacement_images` | HTTP GET of two hard-coded image URLs |
+| `verify_replacement_images` | HTTP GET of the seeded `p-001` and `p-005` image URLs |
 
 ### 7. Swagger UI
 
