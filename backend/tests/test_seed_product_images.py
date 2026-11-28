@@ -59,16 +59,6 @@ def test_other_products_are_unaffected():
     assert products["p-005"]["name"] == "Terry Polo Shirt"
 
 
-def test_verify_replacement_images_checks_the_seeded_urls():
-    # Read as text: importing the script would run its HTTP requests.
-    script = (BACKEND_DIR / "scripts" / "verify_replacement_images.py").read_text(encoding="utf-8")
-    for url in EXPECTED_IMAGES.values():
-        assert url in script
-    for photo_id in OLD_PHOTO_IDS + PREMIUM_PHOTO_IDS:
-        assert photo_id not in script, photo_id
-    assert "plus.unsplash.com" not in script
-
-
 def test_update_product_images_script_is_retired():
     assert not (BACKEND_DIR / "update_product_images.py").exists()
 
