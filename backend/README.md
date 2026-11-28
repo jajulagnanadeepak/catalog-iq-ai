@@ -132,7 +132,6 @@ they are not part of the test suite. Run one deliberately from `backend/`:
 | `check_search_relevance` | FAISS index + MongoDB `catalog_products`; loads the embedding model (may download it into the model cache) |
 | `check_trousers` | MongoDB `products` (via `ProductService`) |
 | `check_trousers_budget` | MongoDB `products` + the exchange-rate API (via `BudgetService`) |
-| `inspect_broken_products` | MongoDB `products`: products `p-005` and `p-001` |
 | `inspect_faiss_ids` | Legacy `products.index` and `product_ids.pkl` in `backend/` |
 | `verify_replacement_images` | HTTP GET of the seeded `p-001` and `p-005` image URLs |
 
