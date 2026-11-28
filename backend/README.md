@@ -59,6 +59,18 @@ unless you also pass `--allow-production`.
 the old `Products` collection, files `search.py` never loads) was retired in
 Phase 1 WS-E3.4; git history keeps it.
 
+The 12 demo products (`p-001` to `p-012`, the `products` collection used by
+product pages, recommendations, budget, stylist and visual search) come from
+`database/seed.py`:
+
+```bash
+python -m database.seed            # dry run: database name, existing count, planned insert
+python -m database.seed --apply    # insert, only if `products` is empty
+```
+
+It never updates, deletes or overwrites documents; a non-empty collection is
+left untouched. `APP_ENV=production` is always refused (no override).
+
 ### 4. Start the API server
 
 ```bash
