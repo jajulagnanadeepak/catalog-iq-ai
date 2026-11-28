@@ -1,10 +1,34 @@
 """
-Seed script — inserts the 12 catalog products from the frontend mock into MongoDB.
-Run once: python -m database.seed
+Seed the demo ``products`` collection with the 12 catalogue products that
+mirror the frontend mock (``_id`` ``p-001`` to ``p-012``).
+
+Safety (Phase 1 WS-E3.6):
+* importing this module does nothing (no DB connection, no reads, no writes);
+* running it without flags is a dry run: it reports the target database, the
+  existing document count (read-only) and the planned insert;
+* ``--apply`` inserts the products, and only into an empty collection; it never
+  updates, deletes or overwrites documents;
+* ``APP_ENV=production`` is always refused before connecting, with no override
+  (this is demo data);
+* the MongoDB URL is never printed.
+
+Usage (from ``backend/``):
+    python -m database.seed            # dry run
+    python -m database.seed --apply    # insert into an empty collection
 """
 
+import argparse
 import asyncio
+import sys
+
+from config import settings
 from database.connection import connect_db, close_db, get_database
+
+COLLECTION_NAME = "products"
+
+EXIT_OK = 0
+EXIT_ERROR = 1
+EXIT_REFUSED = 2
 
 PRODUCTS = [
     {
@@ -193,33 +217,99 @@ PRODUCTS = [
 ]
 
 
-async def seed() -> None:
-    await connect_db()
+def _is_production() -> bool:
+    return str(settings.app_env).strip().lower() == "production"
 
-    db = get_database()
 
-    # IMPORTANT: same collection name used by ProductService
-    col = db["products"]
-
-    existing = await col.count_documents({})
-
+def _print_plan(existing: int) -> None:
+    print("-" * 60)
+    print(f"Target database   : {settings.database_name}")
+    print(f"Target collection : {COLLECTION_NAME}")
+    print(f"Existing documents: {existing:,}")
     if existing > 0:
+        print("Planned operation : none (the seed only fills an empty collection)")
+    else:
         print(
-            f"ℹ️ Products collection already has "
-            f"{existing} documents — skipping seed."
+            f"Planned operation : insert {len(PRODUCTS)} demo products "
+            f"({PRODUCTS[0]['_id']} to {PRODUCTS[-1]['_id']})"
         )
+    print("-" * 60)
+
+
+async def seed(apply: bool = False) -> int:
+    print("=" * 60)
+    print("CatalogIQ demo product seed")
+    print("=" * 60)
+
+    # Checked before any connection; there is deliberately no override.
+    if _is_production():
+        print(
+            "REFUSED: APP_ENV=production. The demo seed never runs in production. "
+            "Nothing was changed."
+        )
+        return EXIT_REFUSED
+
+    try:
+        try:
+            await connect_db()
+        except Exception as exc:
+            # Only the exception type: driver messages can include the host.
+            print(f"ERROR: could not connect to MongoDB ({type(exc).__name__}). Nothing was changed.")
+            return EXIT_ERROR
+
+        # Same collection name used by ProductService.
+        collection = get_database()[COLLECTION_NAME]
+        existing = await collection.count_documents({})
+        _print_plan(existing)
+
+        if existing > 0:
+            print(
+                f"SKIPPED: '{COLLECTION_NAME}' already has {existing:,} documents. "
+                "Nothing was changed."
+            )
+            return EXIT_OK
+
+        if not apply:
+            print("DRY RUN: nothing was changed. Re-run with --apply to insert.")
+            return EXIT_OK
+
+        await collection.insert_many([dict(product) for product in PRODUCTS])
+        print(
+            f"Seeded {len(PRODUCTS)} products into "
+            f"'{settings.database_name}.{COLLECTION_NAME}'."
+        )
+        return EXIT_OK
+
+    except Exception as exc:
+        print(
+            f"ERROR: MongoDB operation failed ({type(exc).__name__}). "
+            f"'{COLLECTION_NAME}' may hold some of the demo products; check it before re-running."
+        )
+        return EXIT_ERROR
+
+    finally:
         await close_db()
-        return
 
-    await col.insert_many(PRODUCTS)
 
-    print(
-        f"🌱 Seeded {len(PRODUCTS)} products into "
-        f"'{db.name}.products'."
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description=(
+            f"Seed the demo '{COLLECTION_NAME}' collection. "
+            "Dry run unless --apply is given."
+        )
     )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help=f"insert the demo products (only into an empty '{COLLECTION_NAME}')",
+    )
+    return parser.parse_args(argv)
 
-    await close_db()
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
+    return asyncio.run(seed(apply=args.apply))
 
 
 if __name__ == "__main__":
-    asyncio.run(seed())
+    sys.exit(main())
