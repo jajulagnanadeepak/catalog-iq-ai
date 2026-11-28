@@ -126,7 +126,6 @@ they are not part of the test suite. Run one deliberately from `backend/`:
 | Script | Reads |
 |---|---|
 | `check_catalog` | MongoDB `products`: image fields of 15 products |
-| `check_catalogs` | MongoDB `products` and `Products`: counts and one sample each |
 | `check_hm_catalog` | MongoDB `catalog_products`: count and one sample |
 | `check_image_urls` | MongoDB `products`, then an HTTP GET of every image URL |
 | `check_search_relevance` | FAISS index + MongoDB `catalog_products`; loads the embedding model (may download it into the model cache) |
