@@ -54,6 +54,11 @@ loads them), first as `*.tmp` files that are validated before replacing the live
 pair; the previous pair is kept as `*.bak`. `APP_ENV=production` is refused
 unless you also pass `--allow-production`.
 
+`create_hm_embeddings.py` is the only supported embedding builder. The legacy
+`create_embeddings.py` (which built `products.index` / `product_ids.pkl` from
+the old `Products` collection, files `search.py` never loads) was retired in
+Phase 1 WS-E3.4; git history keeps it.
+
 ### 4. Start the API server
 
 ```bash
